@@ -767,11 +767,6 @@ update_implicit_microphysics_cache!(Y, p, _, _) = nothing
 function update_implicit_microphysics_cache!(
     Y, p, mm::EquilibriumMicrophysics0M, _,
 )
-    (; dt) = p
-    (; ᶜS_ρq_tot, ᶜS_ρe_tot, ᶜmp_tendency) = p.precomputed
-    (; ᶜΦ) = p.core
-    @. ᶜS_ρq_tot = Y.c.ρ * ᶜmp_tendency.dq_tot_dt
-    @. ᶜS_ρe_tot = ᶜS_ρq_tot * (ᶜmp_tendency.e_int_precip + ᶜΦ)
     set_precipitation_surface_fluxes!(Y, p, mm)
     return nothing
 end
@@ -780,7 +775,7 @@ function update_implicit_microphysics_cache!(
     Y, p, mm::EquilibriumMicrophysics0M, tm::DiagnosticEDMFX,
 )
     (; ᶜΦ) = p.core
-    (; ᶜS_ρq_tot, ᶜS_ρe_tot) = p.precomputed
+    (; ᶜS_ρq_tot) = p.precomputed
     (; ᶜSqₜᵐ⁰, ᶜSqₜᵐʲs) = p.precomputed
     (; ᶜTʲs, ᶜq_liq_raiʲs, ᶜq_ice_snoʲs, ᶜρaʲs) = p.precomputed
     (; ᶜT, ᶜq_liq_rai, ᶜq_ice_sno) = p.precomputed
@@ -791,25 +786,10 @@ function update_implicit_microphysics_cache!(
 
     # Environment contribution
     @. ᶜS_ρq_tot = ᶜSqₜᵐ⁰ * ᶜρa⁰
-    @. ᶜS_ρe_tot =
-        ᶜSqₜᵐ⁰ *
-        ᶜρa⁰ *
-        e_tot_0M_precipitation_sources_helper(thermo_params, ᶜT, ᶜq_liq_rai, ᶜq_ice_sno, ᶜΦ)
     # Updraft contributions
     for j in 1:n
         @. ᶜS_ρq_tot += ᶜSqₜᵐʲs.:($$j) * ᶜρaʲs.:($$j)
-        @. ᶜS_ρe_tot +=
-            ᶜSqₜᵐʲs.:($$j) *
-            ᶜρaʲs.:($$j) *
-            e_tot_0M_precipitation_sources_helper(
-                thermo_params,
-                ᶜTʲs.:($$j),
-                ᶜq_liq_raiʲs.:($$j),
-                ᶜq_ice_snoʲs.:($$j),
-                ᶜΦ,
-            )
     end
-
     set_precipitation_surface_fluxes!(Y, p, mm)
     return nothing
 end
@@ -818,7 +798,7 @@ function update_implicit_microphysics_cache!(
     Y, p, mm::EquilibriumMicrophysics0M, tm::PrognosticEDMFX,
 )
     (; ᶜΦ) = p.core
-    (; ᶜS_ρq_tot, ᶜS_ρe_tot) = p.precomputed
+    (; ᶜS_ρq_tot) = p.precomputed
     (; ᶜSqₜᵐ⁰, ᶜSqₜᵐʲs) = p.precomputed
     (; ᶜTʲs, ᶜq_liq_raiʲs, ᶜq_ice_snoʲs) = p.precomputed
     (; ᶜT⁰, ᶜq_liq_rai⁰, ᶜq_ice_sno⁰) = p.precomputed
@@ -828,28 +808,8 @@ function update_implicit_microphysics_cache!(
     ᶜρa⁰ = @. lazy(ρa⁰(Y.c.ρ, Y.c.sgsʲs, tm))
 
     @. ᶜS_ρq_tot = ᶜSqₜᵐ⁰ * ᶜρa⁰
-    @. ᶜS_ρe_tot =
-        ᶜSqₜᵐ⁰ *
-        ᶜρa⁰ *
-        e_tot_0M_precipitation_sources_helper(
-            thermo_params,
-            ᶜT⁰,
-            ᶜq_liq_rai⁰,
-            ᶜq_ice_sno⁰,
-            ᶜΦ,
-        )
     for j in 1:n
         @. ᶜS_ρq_tot += ᶜSqₜᵐʲs.:($$j) * Y.c.sgsʲs.:($$j).ρa
-        @. ᶜS_ρe_tot +=
-            ᶜSqₜᵐʲs.:($$j) *
-            Y.c.sgsʲs.:($$j).ρa *
-            e_tot_0M_precipitation_sources_helper(
-                thermo_params,
-                ᶜTʲs.:($$j),
-                ᶜq_liq_raiʲs.:($$j),
-                ᶜq_ice_snoʲs.:($$j),
-                ᶜΦ,
-            )
     end
     set_precipitation_surface_fluxes!(Y, p, mm)
     return nothing

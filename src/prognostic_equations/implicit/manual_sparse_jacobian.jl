@@ -530,7 +530,7 @@ function update_jacobian!(alg::ManualSparseJacobian, cache, Y, p, dtγ, t)
     ᶜθ_v = p.scratch.ᶜtemp_scalar_3
     @. ᶜθ_v = theta_v(thermo_params, ᶜT, ᶜp, ᶜq_tot_safe, ᶜq_liq_rai, ᶜq_ice_sno)
     ᶜΠ = @. lazy(TD.exner_given_pressure(thermo_params, ᶜp))
-    # In implicit tendency, we use the new pressure-gradient formulation (PGF) and gravitational acceleration: 
+    # In implicit tendency, we use the new pressure-gradient formulation (PGF) and gravitational acceleration:
     #              grad(p) / ρ + grad(Φ)  =  cp_d * θ_v * grad(Π) + grad(Φ).
     # Here below, we use the old formulation of (grad(Φ) + grad(p) / ρ).
     # This is because the new formulation would require computing the derivative of θ_v.
@@ -1397,6 +1397,7 @@ function update_jacobian!(alg::ManualSparseJacobian, cache, Y, p, dtγ, t)
     zero_velocity_jacobian!(matrix, Y, p, t)
 end
 
+dupa
 """
     update_microphysics_jacobian!(matrix, Y, p, dtγ, sgs_advection_flag)
 
@@ -1415,10 +1416,11 @@ function update_microphysics_jacobian!(matrix, Y, p, dtγ, sgs_advection_flag)
     # 0M microphysics: diagonal entry for ρq_tot
     if p.atmos.microphysics_model isa EquilibriumMicrophysics0M
         if MatrixFields.has_field(Y, @name(c.ρq_tot))
-            (; ᶜS_ρq_tot) = p.precomputed
+            (; ᶜmp_tendency) = p.precomputed
             ∂ᶜρq_tot_err_∂ᶜρq_tot = matrix[@name(c.ρq_tot), @name(c.ρq_tot)]
-            @. ∂ᶜρq_tot_err_∂ᶜρq_tot +=
-                dtγ * DiagonalMatrixRow(_jac_coeff(ᶜS_ρq_tot, Y.c.ρq_tot))
+            @. ∂ᶜρq_tot_err_∂ᶜρq_tot += dtγ * DiagonalMatrixRow(_jac_coeff(
+                ᶜρ * ᶜmp_tendency.dq_tot_dt, Y.c.ρq_tot
+            ))
         end
     end
 
@@ -1446,18 +1448,18 @@ function update_microphysics_jacobian!(matrix, Y, p, dtγ, sgs_advection_flag)
         # used in the implicit tendency, preventing Newton solver divergence
         # when the SGS distribution differs from the grid mean.
         if p.atmos.turbconv_model isa PrognosticEDMFX
-            # Environment quadrature tendencies 
-            (; ᶜSqᵣᵐ⁰, ᶜSqₛᵐ⁰) = p.precomputed
+            # Environment quadrature tendencies
+            (; ᶜmp_tendency⁰) = p.precomputed
             precip_1m_sq_tracers = (
-                (@name(c.ρq_rai), ᶜSqᵣᵐ⁰, Y.c.ρq_rai),
-                (@name(c.ρq_sno), ᶜSqₛᵐ⁰, Y.c.ρq_sno),
+                (@name(c.ρq_rai), ᶜmp_tendency⁰.dq_rai_dt, Y.c.ρq_rai),
+                (@name(c.ρq_sno), ᶜmp_tendency⁰.dq_sno_dt, Y.c.ρq_sno),
             )
         else
             # Grid-mean quadrature tendencies
-            (; ᶜSqᵣᵐ, ᶜSqₛᵐ) = p.precomputed
+            (; ᶜmp_tendency) = p.precomputed
             precip_1m_sq_tracers = (
-                (@name(c.ρq_rai), ᶜSqᵣᵐ, Y.c.ρq_rai),
-                (@name(c.ρq_sno), ᶜSqₛᵐ, Y.c.ρq_sno),
+                (@name(c.ρq_rai), ᶜmp_tendency.dq_rai_dt, Y.c.ρq_rai),
+                (@name(c.ρq_sno), ᶜmp_tendency.dq_sno_dt, Y.c.ρq_sno),
             )
         end
         MatrixFields.unrolled_foreach(
@@ -1493,10 +1495,10 @@ function update_microphysics_jacobian!(matrix, Y, p, dtγ, sgs_advection_flag)
 
         # Precipitation: use S/q from quadrature-integrated tendencies
         # _jac_coeff_from_ratio safely returns zero when |q| < ε
-        (; ᶜSqᵣᵐ, ᶜSnᵣᵐ) = p.precomputed
+        (; ᶜmp_tendency) = p.precomputed
         precip_2m_sq_tracers = (
-            (@name(c.ρq_rai), ᶜSqᵣᵐ, Y.c.ρq_rai),
-            (@name(c.ρn_rai), ᶜSnᵣᵐ, Y.c.ρn_rai),
+            (@name(c.ρq_rai), ᶜmp_tendency.dq_rai_dt, Y.c.ρq_rai),
+            (@name(c.ρn_rai), ᶜmp_tendency.dn_rai_dt, Y.c.ρn_rai),
         )
         MatrixFields.unrolled_foreach(
             precip_2m_sq_tracers,
@@ -1508,7 +1510,7 @@ function update_microphysics_jacobian!(matrix, Y, p, dtγ, sgs_advection_flag)
             )
         end
     end
-
+# Dupa - tu skonczylam
     # EDMF microphysics: diagonal entries for updraft variables
     if p.atmos.turbconv_model isa PrognosticEDMFX
 
@@ -1592,6 +1594,7 @@ function update_microphysics_jacobian!(matrix, Y, p, dtγ, sgs_advection_flag)
     end
     return nothing
 end
+dupa
 
 invert_jacobian!(::ManualSparseJacobian, cache, ΔY, R) =
     LinearAlgebra.ldiv!(ΔY, cache.matrix, R)
