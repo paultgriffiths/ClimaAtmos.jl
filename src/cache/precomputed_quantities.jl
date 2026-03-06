@@ -179,30 +179,27 @@ function precomputed_quantities(Y, atmos)
     sedimentation_quantities =
         atmos.microphysics_model isa NonEquilibriumMicrophysics ?
         (; ᶜwₗ = similar(Y.c, FT), ᶜwᵢ = similar(Y.c, FT)) : (;)
+
+    # Helper named tuples for microphysics cache
+    MP0_NT = @NamedTuple{dq_tot_dt::FT, e_tot_hlpr}
+    MP1_NT = @NamedTuple{
+        dq_lcl_dt::FT, dq_icl_dt::FT, dq_rai_dt::FT, dq_sno_dt::FT,
+    }
+    MP3_NT = @NamedTuple{
+        dq_lcl_dt::FT, dn_lcl_dt::FT, dq_rai_dt::FT, dn_rai_dt::FT,
+        dq_ice_dt::FT, dq_rim_dt::FT, db_rim_dt::FT,
+    }
+    ∂MP1_NT = @NamedTuple{∂tendency_∂q_lcl::FT, ∂tendency_∂q_icl::FT}
+    ∂MP3_NT = @NamedTuple{∂tendency_∂q_lcl::FT, ∂tendency_∂n_lcl::FT}
+
     if atmos.microphysics_model isa EquilibriumMicrophysics0M
-        precipitation_quantities = (;
-            ᶜS_ρq_tot = similar(Y.c, FT),
-            ᶜS_ρe_tot = similar(Y.c, FT),
-            ᶜmp_tendency = similar(Y.c,
-                @NamedTuple{dq_tot_dt::FT, e_int_precip::FT}),
-        )
+        precipitation_quantities = (; ᶜmp_tendency = similar(Y.c, MP0_NT),)
     elseif atmos.microphysics_model isa NonEquilibriumMicrophysics1M
         precipitation_quantities = (;
             ᶜwᵣ = similar(Y.c, FT),
             ᶜwₛ = similar(Y.c, FT),
-            ᶜSqₗᵐ = similar(Y.c, FT),
-            ᶜSqᵢᵐ = similar(Y.c, FT),
-            ᶜSqᵣᵐ = similar(Y.c, FT),
-            ᶜSqₛᵐ = similar(Y.c, FT),
-            ᶜmp_tendency = similar(Y.c,
-                @NamedTuple{dq_lcl_dt::FT, dq_icl_dt::FT, dq_rai_dt::FT, dq_sno_dt::FT}
-            ),
-            ᶜmp_derivative = similar(Y.c,
-                @NamedTuple{
-                    ∂tendency_∂q_lcl::FT,
-                    ∂tendency_∂q_icl::FT,
-                }
-            ),
+            ᶜmp_tendency = similar(Y.c, MP1_NT),
+            ᶜmp_derivative = similar(Y.c, ∂MP1_NT),
         )
     elseif atmos.microphysics_model isa
            Union{NonEquilibriumMicrophysics2M, NonEquilibriumMicrophysics2MP3}
@@ -210,27 +207,10 @@ function precomputed_quantities(Y, atmos)
         precipitation_quantities = (;
             ᶜwᵣ = similar(Y.c, FT),
             ᶜwₛ = similar(Y.c, FT),
-            ᶜSqₗᵐ = similar(Y.c, FT),
-            ᶜSqᵢᵐ = similar(Y.c, FT),
-            ᶜSqᵣᵐ = similar(Y.c, FT),
-            ᶜSqₛᵐ = similar(Y.c, FT),
             ᶜwₙₗ = similar(Y.c, FT),
             ᶜwₙᵣ = similar(Y.c, FT),
-            ᶜSnₗᵐ = similar(Y.c, FT),
-            ᶜSnᵣᵐ = similar(Y.c, FT),
-            ᶜmp_tendency = similar(Y.c,
-                @NamedTuple{
-                    dq_lcl_dt::FT, dn_lcl_dt::FT,
-                    dq_rai_dt::FT, dn_rai_dt::FT,
-                    dq_ice_dt::FT, dq_rim_dt::FT, db_rim_dt::FT,
-                }
-            ),
-            ᶜmp_derivative = similar(Y.c,
-                @NamedTuple{
-                    ∂tendency_∂q_lcl::FT,
-                    ∂tendency_∂n_lcl::FT,
-                }
-            ),
+            ᶜmp_tendency = similar(Y.c, MP3_NT),
+            ᶜmp_derivative = similar(Y.c, ∂MP3_NT),
         )
         # Add additional quantities for 2M + P3
         if atmos.microphysics_model isa NonEquilibriumMicrophysics2MP3
@@ -259,48 +239,34 @@ function precomputed_quantities(Y, atmos)
     end
     precipitation_sgs_quantities =
         atmos.microphysics_model isa EquilibriumMicrophysics0M ?
-        (; ᶜSqₜᵐʲs = similar(Y.c, NTuple{n, FT}), ᶜSqₜᵐ⁰ = similar(Y.c, FT)) :
+        (;
+            ᶜmp_tendencyʲs = similar(Y.c, NTuple{n, MP0_NT}),
+            ᶜmp_tendency⁰ = similar(Y.c, MP0_NT),
         atmos.microphysics_model isa NonEquilibriumMicrophysics1M ?
         (;
-            ᶜSqₗᵐʲs = similar(Y.c, NTuple{n, FT}),
-            ᶜSqᵢᵐʲs = similar(Y.c, NTuple{n, FT}),
-            ᶜSqᵣᵐʲs = similar(Y.c, NTuple{n, FT}),
-            ᶜSqₛᵐʲs = similar(Y.c, NTuple{n, FT}),
+            ᶜmp_tendencyʲs = similar(Y.c, NTuple{n, MP1_NT}),
+            ᶜmp_tendency⁰ = similar(Y.c, MP1_NT),
             # BMT cloud derivatives ∂(dq_lcl/dt)/∂q_lcl and ∂(dq_icl/dt)/∂q_icl
             # evaluated at each updraft state (same pattern as grid-mean ᶜmp_derivative).
             # Precipitation (q_rai, q_sno) Jacobian is computed inline in
             # update_microphysics_jacobian! using S/q with the current iterate.
-            ᶜ∂Sqₗʲs = similar(Y.c, NTuple{n, FT}),
-            ᶜ∂Sqᵢʲs = similar(Y.c, NTuple{n, FT}),
+            ᶜmp_derivativeʲs = similar(Y.c, NTuple{n, ∂MP1_NT}),
+            # TODO - do I also need a derivative for the envoronment?
             ᶜwₗʲs = similar(Y.c, NTuple{n, FT}),
             ᶜwᵢʲs = similar(Y.c, NTuple{n, FT}),
             ᶜwᵣʲs = similar(Y.c, NTuple{n, FT}),
             ᶜwₛʲs = similar(Y.c, NTuple{n, FT}),
-            ᶜSqₗᵐ⁰ = similar(Y.c, FT),
-            ᶜSqᵢᵐ⁰ = similar(Y.c, FT),
-            ᶜSqᵣᵐ⁰ = similar(Y.c, FT),
-            ᶜSqₛᵐ⁰ = similar(Y.c, FT),
         ) :
         atmos.microphysics_model isa NonEquilibriumMicrophysics2M ?
         (;
-            ᶜSqₗᵐʲs = similar(Y.c, NTuple{n, FT}),
-            ᶜSqᵢᵐʲs = similar(Y.c, NTuple{n, FT}),
-            ᶜSqᵣᵐʲs = similar(Y.c, NTuple{n, FT}),
-            ᶜSqₛᵐʲs = similar(Y.c, NTuple{n, FT}),
-            ᶜSnₗᵐʲs = similar(Y.c, NTuple{n, FT}),
-            ᶜSnᵣᵐʲs = similar(Y.c, NTuple{n, FT}),
+            ᶜmp_tendencyʲs = similar(Y.c, NTuple{n, MP3_NT}),
+            ᶜmp_tendency⁰ = similar(Y.c, MP3_NT),
             ᶜwₗʲs = similar(Y.c, NTuple{n, FT}),
             ᶜwᵢʲs = similar(Y.c, NTuple{n, FT}),
             ᶜwᵣʲs = similar(Y.c, NTuple{n, FT}),
             ᶜwₛʲs = similar(Y.c, NTuple{n, FT}),
             ᶜwₙₗʲs = similar(Y.c, NTuple{n, FT}),
             ᶜwₙᵣʲs = similar(Y.c, NTuple{n, FT}),
-            ᶜSqₗᵐ⁰ = similar(Y.c, FT),
-            ᶜSqᵢᵐ⁰ = similar(Y.c, FT),
-            ᶜSqᵣᵐ⁰ = similar(Y.c, FT),
-            ᶜSqₛᵐ⁰ = similar(Y.c, FT),
-            ᶜSnₗᵐ⁰ = similar(Y.c, FT),
-            ᶜSnᵣᵐ⁰ = similar(Y.c, FT),
         ) : (;)
     # Zero-initialize updraft cloud Jacobian derivatives to prevent NaN from
     # uninitialized memory before the first call to set_microphysics_tendency_cache!

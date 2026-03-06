@@ -31,6 +31,7 @@ function Kin(ᶜw_precip, ᶜu_air)
     )
 end
 
+# TODO - move both of those to Utilities. Make sure they are used consistently
 """
     ϵ_numerics(FT)
 
@@ -65,6 +66,8 @@ function set_precipitation_velocities!(Y, p, _, _)
     @. ᶜwₕhₜ = Geometry.WVector(0)
     return nothing
 end
+# TODO - a lot of code repetition between microphysic categories within functions
+# and between different microphysics options. Refactor!
 function set_precipitation_velocities!(
     Y,
     p,
@@ -751,33 +754,30 @@ refreshed here.
   frozen tendencies and the current iterate.
 - **default**: no-op (microphysics not active or not implicit).
 """
+# 0M + DiagnosticEDMFX: re-aggregate the per-subdomain specific tendencies
+# (ᶜSqₜᵐ⁰, ᶜSqₜᵐʲs) with the current density (ρ changes at each Newton
+# iterate; the specific tendencies themselves do not).
+
+# 1M: lightweight refresh only — surface fluxes.
+# Specific tendencies (ᶜSqₗᵐ, etc.) are frozen from the explicit stage.
+# 2M: lightweight refresh only — surface fluxes.
+
 update_implicit_microphysics_cache!(Y, p, _, _) = nothing
 
-# 0M grid-mean (non-EDMF):
 function update_implicit_microphysics_cache!(
-    Y, p,
-    ::EquilibriumMicrophysics0M,
-    _,
+    Y, p, mm::EquilibriumMicrophysics0M, _,
 )
     (; dt) = p
     (; ᶜS_ρq_tot, ᶜS_ρe_tot, ᶜmp_tendency) = p.precomputed
     (; ᶜΦ) = p.core
     @. ᶜS_ρq_tot = Y.c.ρ * ᶜmp_tendency.dq_tot_dt
     @. ᶜS_ρe_tot = ᶜS_ρq_tot * (ᶜmp_tendency.e_int_precip + ᶜΦ)
-    set_precipitation_surface_fluxes!(
-        Y, p,
-        EquilibriumMicrophysics0M(),
-    )
+    set_precipitation_surface_fluxes!(Y, p, mm)
     return nothing
 end
 
-# 0M + DiagnosticEDMFX: re-aggregate the per-subdomain specific tendencies
-# (ᶜSqₜᵐ⁰, ᶜSqₜᵐʲs) with the current density (ρ changes at each Newton
-# iterate; the specific tendencies themselves do not).
 function update_implicit_microphysics_cache!(
-    Y, p,
-    ::EquilibriumMicrophysics0M,
-    turbconv_model::DiagnosticEDMFX,
+    Y, p, mm::EquilibriumMicrophysics0M, tm::DiagnosticEDMFX,
 )
     (; ᶜΦ) = p.core
     (; ᶜS_ρq_tot, ᶜS_ρe_tot) = p.precomputed
@@ -786,8 +786,8 @@ function update_implicit_microphysics_cache!(
     (; ᶜT, ᶜq_liq_rai, ᶜq_ice_sno) = p.precomputed
     thermo_params = CAP.thermodynamics_params(p.params)
 
-    n = n_mass_flux_subdomains(turbconv_model)
-    ᶜρa⁰ = @. lazy(ρa⁰(Y.c.ρ, p.precomputed.ᶜρaʲs, turbconv_model))
+    n = n_mass_flux_subdomains(tm)
+    ᶜρa⁰ = @. lazy(ρa⁰(Y.c.ρ, p.precomputed.ᶜρaʲs, tm))
 
     # Environment contribution
     @. ᶜS_ρq_tot = ᶜSqₜᵐ⁰ * ᶜρa⁰
@@ -810,15 +810,12 @@ function update_implicit_microphysics_cache!(
             )
     end
 
-    set_precipitation_surface_fluxes!(Y, p, EquilibriumMicrophysics0M())
+    set_precipitation_surface_fluxes!(Y, p, mm)
     return nothing
 end
 
-# 0M + PrognosticEDMFX:
 function update_implicit_microphysics_cache!(
-    Y, p,
-    ::EquilibriumMicrophysics0M,
-    ::PrognosticEDMFX,
+    Y, p, mm::EquilibriumMicrophysics0M, tm::PrognosticEDMFX,
 )
     (; ᶜΦ) = p.core
     (; ᶜS_ρq_tot, ᶜS_ρe_tot) = p.precomputed
@@ -827,8 +824,8 @@ function update_implicit_microphysics_cache!(
     (; ᶜT⁰, ᶜq_liq_rai⁰, ᶜq_ice_sno⁰) = p.precomputed
     thermo_params = CAP.thermodynamics_params(p.params)
 
-    n = n_mass_flux_subdomains(p.atmos.turbconv_model)
-    ᶜρa⁰ = @. lazy(ρa⁰(Y.c.ρ, Y.c.sgsʲs, p.atmos.turbconv_model))
+    n = n_mass_flux_subdomains(tm)
+    ᶜρa⁰ = @. lazy(ρa⁰(Y.c.ρ, Y.c.sgsʲs, tm))
 
     @. ᶜS_ρq_tot = ᶜSqₜᵐ⁰ * ᶜρa⁰
     @. ᶜS_ρe_tot =
@@ -854,30 +851,12 @@ function update_implicit_microphysics_cache!(
                 ᶜΦ,
             )
     end
-
-    set_precipitation_surface_fluxes!(
-        Y, p,
-        EquilibriumMicrophysics0M(),
-    )
-    return nothing
-end
-
-# 1M: lightweight refresh only — surface fluxes.
-# Specific tendencies (ᶜSqₗᵐ, etc.) are frozen from the explicit stage.
-function update_implicit_microphysics_cache!(
-    Y, p,
-    mm::NonEquilibriumMicrophysics1M,
-    turbconv_model,
-)
     set_precipitation_surface_fluxes!(Y, p, mm)
     return nothing
 end
 
-# 2M: lightweight refresh only — surface fluxes.
 function update_implicit_microphysics_cache!(
-    Y, p,
-    mm::NonEquilibriumMicrophysics2M,
-    turbconv_model,
+    Y, p, mm::NonEquilibriumMicrophysics, _,
 )
     set_precipitation_surface_fluxes!(Y, p, mm)
     return nothing
@@ -886,18 +865,18 @@ end
 """
     set_microphysics_tendency_cache!(Y, p, microphysics_model, turbconv_model)
 
-Compute and cache the microphysics source terms (`ᶜS_ρq_tot`, `ᶜS_ρe_tot`, Jacobian
+Compute and cache the microphysics source terms (`ᶜmp_tendency`, Jacobian
 coefficients, etc.) for the current state `Y`.
 
 **Dispatch table** (microphysics_model × turbconv_model):
 
-| Model  | Nothing / default | DiagnosticEDMFX | PrognosticEDMFX |
-|--------|-------------------|-----------------|-----------------|
-| DryModel | no-op           | no-op (fallback)| no-op (fallback)|
-| 0M     | grid-mean (± SGS quad) | EDMF-weighted | EDMF-weighted |
-| 1M     | grid-mean (± SGS quad) | EDMF-weighted | EDMF-weighted |
-| 2M     | grid-mean         | **error** (not implemented) | EDMF-weighted |
-| 2MP3   | grid-mean (no EDMF) | —             | —               |
+| Model    | Nothing / default      | DiagnosticEDMFX | PrognosticEDMFX |
+|----------|------------------------|-----------------|-----------------|
+| DryModel | no-op                  | no-op (fallback)| no-op (fallback)|
+| 0M       | grid-mean (± SGS quad) | EDMF-weighted   | EDMF-weighted   |
+| 1M       | grid-mean (± SGS quad) | EDMF-weighted   | EDMF-weighted   |
+| 2M       | grid-mean              | not implemented | EDMF-weighted   |
+| 2MP3     | grid-mean (no EDMF)    | —               | —               |
 
 **Non-EDMF path** computes microphysics on the grid-mean state, with an optional sum over
 SGS quadrature points (controlled by `p.atmos.sgs_quadrature`) to sample subgrid variability.
@@ -918,11 +897,17 @@ The grid-mean source is then the area-weighted sum:
   `ᶜS_ρq_tot = ᶜSqₜᵐ⁰ * ᶜρa⁰ + Σⱼ ᶜSqₜᵐʲ * ᶜρaʲ`
 """
 set_microphysics_tendency_cache!(Y, p, _, _) = nothing
+
+###
+### 0 Moment Microphysics
+###
+
 function set_microphysics_tendency_cache!(Y, p, ::EquilibriumMicrophysics0M, _)
     (; dt) = p
     (; ᶜΦ) = p.core
+    # TODO unified naming convention - _safe, lcl+rai-liq, icl+sno=ice
     (; ᶜT, ᶜq_tot_safe, ᶜq_liq_rai, ᶜq_ice_sno) = p.precomputed
-    (; ᶜS_ρq_tot, ᶜS_ρe_tot, ᶜmp_tendency) = p.precomputed
+    (; ᶜmp_tendency) = p.precomputed
 
     cm0 = CAP.microphysics_0m_params(p.params)
     thp = CAP.thermodynamics_params(p.params)
@@ -932,195 +917,137 @@ function set_microphysics_tendency_cache!(Y, p, ::EquilibriumMicrophysics0M, _)
     # and then always call the quadrature path anyway.
     # We should do the same here. Concern is that ᶜT′T′/ᶜq′q′
     # are currenly only allocated when sgs_quadrature is configured.
+
+    ### Grid-mean microphysics tendency (with/without quadrature sampling)
     sgs_quad = p.atmos.sgs_quadrature
     if !isnothing(sgs_quad)
-        # Evaluate over quadrature points
+        # Evaluate over quadrature points...
         (; ᶜT′T′, ᶜq′q′) = p.precomputed
-        @. ᶜmp_tendency = microphysics_tendencies_quadrature_0m(
-            $(sgs_quad),
-            cm0,
-            thp,
-            Y.c.ρ,
-            ᶜT,
-            ᶜq_tot_safe,
-            ᶜT′T′,
-            ᶜq′q′,
-            correlation_Tq(p.params),
+        @. ᶜmp_tendency.dq_tot_dt = microphysics_tendencies_quadrature_0m(
+            $(sgs_quad), cm0, thp, Y.c.ρ, ᶜT, ᶜq_tot_safe,
+            ᶜT′T′, ᶜq′q′, correlation_Tq(p.params),
         )
     else
-        # Evaluate on the grid-mean
+        # ... or evaluate on the grid-mean.
+        # TODO - should use the same EquilibriumMicrophysics0M type?
         @. ᶜmp_tendency = BMT.bulk_microphysics_tendencies(
-            BMT.Microphysics0Moment(),
-            cm0,
-            thp,
-            ᶜT,
-            ᶜq_liq_rai,
-            ᶜq_ice_sno,
+            BMT.Microphysics0Moment(), cm0, thp, ᶜT, ᶜq_liq_rai, ᶜq_ice_sno,
         )
     end
+    # Apply the limiter
     apply_0m_tendency_limits!(
         ᶜmp_tendency, p.atmos.microphysics_tendency_timestepping, ᶜq_tot_safe, dt,
     )
-    @. ᶜS_ρq_tot = Y.c.ρ * ᶜmp_tendency.dq_tot_dt
-    @. ᶜS_ρe_tot = ᶜS_ρq_tot * (ᶜmp_tendency.e_int_precip + ᶜΦ)
+    # Compute helper for total energy contribution
+    @. ᶜmp_tendency.e_tot_hlpr = e_tot_0M_precipitation_sources_helper(
+        thp, ᶜT, ᶜq_liq_rai, ᶜq_ice_sno, ᶜΦ,
+    )
     return nothing
 end
+
 function set_microphysics_tendency_cache!(
-    Y,
-    p,
-    ::EquilibriumMicrophysics0M,
-    turbconv_model::DiagnosticEDMFX,
+    Y, p, ::EquilibriumMicrophysics0M, turbconv_model::DiagnosticEDMFX,
 )
     (; dt) = p
     (; ᶜΦ) = p.core
-    (; ᶜSqₜᵐ⁰, ᶜSqₜᵐʲs, ᶜS_ρq_tot, ᶜS_ρe_tot, ᶜmp_tendency) = p.precomputed
-    (; ᶜTʲs, ᶜq_liq_raiʲs, ᶜq_ice_snoʲs, ᶜρaʲs) = p.precomputed
+    (; ᶜmp_tendency) = p.precomputed
     (; ᶜT, ᶜq_tot_safe, ᶜq_liq_rai, ᶜq_ice_sno) = p.precomputed
     (; ᶜT′T′, ᶜq′q′) = p.precomputed # temperature-based variances
 
     thp = CAP.thermodynamics_params(p.params)
     cm0 = CAP.microphysics_0m_params(p.params)
 
-    n = n_mass_flux_subdomains(p.atmos.turbconv_model)
-    ᶜρa⁰ = @. lazy(ρa⁰(Y.c.ρ, p.precomputed.ᶜρaʲs, p.atmos.turbconv_model))
+    ### Updraft contribution is computed in diagnostic EDMF integral loop
 
-    # Contributions from updrafts are computed
-    # in the diagnostic EDMF integral and stored in ᶜSqₜᵐʲs
-    # Contribution from the environment is computed
-    # as a quadrature sum over the SGS fluctuations
+    ### Environment contribution
     sgs_quad = something(p.atmos.sgs_quadrature, GridMeanSGS())
-    @. ᶜmp_tendency = microphysics_tendencies_quadrature_0m(
-        $(sgs_quad),
-        cm0,
-        thp,
-        Y.c.ρ,
-        ᶜT,
-        ᶜq_tot_safe,
-        ᶜT′T′,
-        ᶜq′q′,
-        correlation_Tq(p.params),
+    @. ᶜmp_tendency.dq_tot_dt = microphysics_tendencies_quadrature_0m(
+        $(sgs_quad), cm0, thp, Y.c.ρ, ᶜT, ᶜq_tot_safe,
+        ᶜT′T′, ᶜq′q′, correlation_Tq(p.params),
     )
+    # Apply the limiter
     apply_0m_tendency_limits!(
-        ᶜmp_tendency, p.atmos.microphysics_tendency_timestepping, ᶜq_tot_safe, dt,
+        ᶜmp_tendency, p.atmos.microphysics_tendency_timestepping,
+        ᶜq_tot_safe, dt,
     )
-    @. ᶜSqₜᵐ⁰ = ᶜmp_tendency.dq_tot_dt
-
-    # Sum the contributions from updrafts and environment
-    @. ᶜS_ρq_tot = ᶜSqₜᵐ⁰ * ᶜρa⁰
-    @. ᶜS_ρe_tot =
-        ᶜSqₜᵐ⁰ *
-        ᶜρa⁰ *
-        e_tot_0M_precipitation_sources_helper(thp, ᶜT, ᶜq_liq_rai, ᶜq_ice_sno, ᶜΦ)
-    for j in 1:n
-        @. ᶜS_ρq_tot += ᶜSqₜᵐʲs.:($$j) * ᶜρaʲs.:($$j)
-        @. ᶜS_ρe_tot +=
-            ᶜSqₜᵐʲs.:($$j) *
-            ᶜρaʲs.:($$j) *
-            e_tot_0M_precipitation_sources_helper(
-                thp,
-                ᶜTʲs.:($$j),
-                ᶜq_liq_raiʲs.:($$j),
-                ᶜq_ice_snoʲs.:($$j),
-                ᶜΦ,
-            )
-    end
+    # Compute total energy helper
+    @. ᶜmp_tendency.e_tot_hlpr = e_tot_0M_precipitation_sources_helper(
+        thp, ᶜT, ᶜq_liq_rai, ᶜq_ice_sno, ᶜΦ,
+    )
     return nothing
 end
+
 function set_microphysics_tendency_cache!(
-    Y,
-    p,
-    ::EquilibriumMicrophysics0M,
-    ::PrognosticEDMFX,
+    Y, p, ::EquilibriumMicrophysics0M, tm::PrognosticEDMFX,
 )
     (; ᶜΦ) = p.core
     (; dt) = p
     (; ᶜp) = p.precomputed
-    (; ᶜS_ρq_tot, ᶜS_ρe_tot, ᶜSqₜᵐ⁰, ᶜSqₜᵐʲs, ᶜmp_tendency) = p.precomputed
-    (; ᶜTʲs, ᶜq_liq_raiʲs, ᶜq_ice_snoʲs) = p.precomputed
+
+    (; ᶜmp_tendencyʲs, ᶜmp_tendency⁰) = p.precomputed
+    (; ᶜTʲs, ᶜq_tot_safeʲs, ᶜq_liq_raiʲs, ᶜq_ice_snoʲs) = p.precomputed
     (; ᶜT⁰, ᶜq_tot_safe⁰, ᶜq_liq_rai⁰, ᶜq_ice_sno⁰) = p.precomputed
     (; ᶜT′T′, ᶜq′q′) = p.precomputed # temperature-based variances
 
     thp = CAP.thermodynamics_params(p.params)
     cm0 = CAP.microphysics_0m_params(p.params)
 
-    n = n_mass_flux_subdomains(p.atmos.turbconv_model)
-    ᶜρa⁰ = @. lazy(ρa⁰(Y.c.ρ, Y.c.sgsʲs, p.atmos.turbconv_model))
+    n = n_mass_flux_subdomains(tm)
 
-    # Sources from the updrafts (direct BMT evaluation without quadrature)
+    ### Updraft contribution
     for j in 1:n
+        # Direct BMT evaluation without quadrature summation
         # Materialize BMT result first to avoid NamedTuple property access in broadcast
-        @. ᶜmp_tendency = BMT.bulk_microphysics_tendencies(
-            BMT.Microphysics0Moment(),
-            cm0, thp,
-            ᶜTʲs.:($$j),
-            ᶜq_liq_raiʲs.:($$j),
-            ᶜq_ice_snoʲs.:($$j),
+        @. ᶜmp_tendencyʲ.:($$j).dq_tot_dt = BMT.bulk_microphysics_tendencies(
+            BMT.Microphysics0Moment(), cm0, thp, ᶜTʲs.:($$j),
+            ᶜq_liq_raiʲs.:($$j), ᶜq_ice_snoʲs.:($$j),
         )
+        # Apply the limiter
         apply_0m_tendency_limits!(
-            ᶜmp_tendency,
-            p.atmos.microphysics_tendency_timestepping,
-            p.precomputed.ᶜq_tot_safeʲs.:($j),
-            dt,
+            ᶜmp_tendencyʲ.:($j), p.atmos.microphysics_tendency_timestepping,
+            ᶜq_tot_safeʲs.:($j), dt,
         )
-        @. ᶜSqₜᵐʲs.:($$j) = ᶜmp_tendency.dq_tot_dt
+        # Compute the total energy helper
+        @. ᶜmp_tendencyʲs.:($$j).e_tot_hlpr =
+            e_tot_0M_precipitation_sources_helper(
+                thp, ᶜTʲs.:($$j), ᶜq_liq_raiʲs.:($$j), ᶜq_ice_snoʲs.:($$j), ᶜΦ,
+        )
     end
 
-    # Sources from the environment (integrate tendencies over SGS fluctuations)
+    ### Environment contribution
     ᶜρ⁰ = @. lazy(
         TD.air_density(thp, ᶜT⁰, ᶜp, ᶜq_tot_safe⁰, ᶜq_liq_rai⁰, ᶜq_ice_sno⁰),
     )
     SG_quad = something(p.atmos.sgs_quadrature, GridMeanSGS())
-    @. ᶜmp_tendency = microphysics_tendencies_quadrature_0m(
-        SG_quad,
-        cm0,
-        thp,
-        ᶜρ⁰,
-        ᶜT⁰,
-        ᶜq_tot_safe⁰,
-        ᶜT′T′,
-        ᶜq′q′,
-        correlation_Tq(p.params),
+    @. ᶜmp_tendency⁰.dq_tot_dt = microphysics_tendencies_quadrature_0m(
+        SG_quad, cm0, thp, ᶜρ⁰, ᶜT⁰, ᶜq_tot_safe⁰,
+        ᶜT′T′, ᶜq′q′, correlation_Tq(p.params),
     )
+    # Apply the limiter
     apply_0m_tendency_limits!(
         ᶜmp_tendency, p.atmos.microphysics_tendency_timestepping, ᶜq_tot_safe⁰, dt,
     )
-    @. ᶜSqₜᵐ⁰ = ᶜmp_tendency.dq_tot_dt
-
-    # Sum the contributions from EDMF subdomains
-    @. ᶜS_ρq_tot = ᶜSqₜᵐ⁰ * ᶜρa⁰
-    @. ᶜS_ρe_tot =
-        ᶜSqₜᵐ⁰ *
-        ᶜρa⁰ *
-        e_tot_0M_precipitation_sources_helper(
-            thp,
-            ᶜT⁰,
-            ᶜq_liq_rai⁰,
-            ᶜq_ice_sno⁰,
-            ᶜΦ,
-        )
-    for j in 1:n
-        @. ᶜS_ρq_tot += ᶜSqₜᵐʲs.:($$j) * Y.c.sgsʲs.:($$j).ρa
-        @. ᶜS_ρe_tot +=
-            ᶜSqₜᵐʲs.:($$j) *
-            Y.c.sgsʲs.:($$j).ρa *
-            e_tot_0M_precipitation_sources_helper(
-                thp,
-                ᶜTʲs.:($$j),
-                ᶜq_liq_raiʲs.:($$j),
-                ᶜq_ice_snoʲs.:($$j),
-                ᶜΦ,
-            )
-    end
+    # Compute the energy source helper
+        # Compute the total energy source helper
+    @. ᶜmp_tendency⁰.e_tot_hlpr = e_tot_0M_precipitation_sources_helper(
+        thp, ᶜT⁰, ᶜq_liq_rai⁰, ᶜq_ice_sno⁰, ᶜΦ,
+    )
     return nothing
 end
 
-function set_microphysics_tendency_cache!(Y, p, ::NonEquilibriumMicrophysics1M, _)
+###
+### 1 Moment Microphysics
+###
+
+function set_microphysics_tendency_cache!(
+    Y, p, ::NonEquilibriumMicrophysics1M, _,
+)
     (; dt) = p
+    (; ᶜT, ᶜp, ᶜq_tot_safe, ᶜmp_tendency, ᶜmp_derivative) = p.precomputed
+    (; ᶜT′T′, ᶜq′q′) = p.precomputed # T-based variances from cache
+
     thp = CAP.thermodynamics_params(p.params)
     cmp = CAP.microphysics_1m_params(p.params)
-
-    (; ᶜT, ᶜp, ᶜq_tot_safe) = p.precomputed
-    (; ᶜSqₗᵐ, ᶜSqᵢᵐ, ᶜSqᵣᵐ, ᶜSqₛᵐ, ᶜmp_tendency) = p.precomputed
 
     # Get specific humidities
     ᶜq_liq = @. lazy(specific(Y.c.ρq_liq, Y.c.ρ))
@@ -1128,254 +1055,146 @@ function set_microphysics_tendency_cache!(Y, p, ::NonEquilibriumMicrophysics1M, 
     ᶜq_rai = @. lazy(specific(Y.c.ρq_rai, Y.c.ρ))
     ᶜq_sno = @. lazy(specific(Y.c.ρq_sno, Y.c.ρ))
 
-    # 1. Get T-based variances from cache
-    (; ᶜT′T′, ᶜq′q′) = p.precomputed
-
-    # 2. Integrate microphysics tendencies over SGS fluctuations
-    #    (writes into pre-allocated ᶜmp_tendency to avoid NamedTuple allocation)
+    # Grid mean or quadrature sum over the SGS fluctuations
+    # (writes into pre-allocated ᶜmp_tendency to avoid NamedTuple allocation)
     sgs_quad = something(p.atmos.sgs_quadrature, GridMeanSGS())
     @. ᶜmp_tendency = microphysics_tendencies_quadrature(
-        BMT.Microphysics1Moment(),
-        sgs_quad,
-        cmp,
-        thp,
-        Y.c.ρ,
-        ᶜp,
-        ᶜT,
-        ᶜq_tot_safe,
-        ᶜq_liq,
-        ᶜq_ice,
-        ᶜq_rai,
-        ᶜq_sno,
-        ᶜT′T′,
-        ᶜq′q′,
-        correlation_Tq(p.params),
+        BMT.Microphysics1Moment(), sgs_quad, cmp, thp, Y.c.ρ, ᶜp, ᶜT,
+        ᶜq_tot_safe, ᶜq_liq, ᶜq_ice, ᶜq_rai, ᶜq_sno,
+        ᶜT′T′, ᶜq′q′, correlation_Tq(p.params),
     )
-
-    # Apply physically motivated tendency limits
+    # Apply the limiter
     apply_1m_tendency_limits!(
         ᶜmp_tendency, p.atmos.microphysics_tendency_timestepping,
         thp, ᶜq_tot_safe, ᶜq_liq, ᶜq_ice, ᶜq_rai, ᶜq_sno, dt,
     )
-    @. ᶜSqₗᵐ = ᶜmp_tendency.dq_lcl_dt
-    @. ᶜSqᵢᵐ = ᶜmp_tendency.dq_icl_dt
-    @. ᶜSqᵣᵐ = ᶜmp_tendency.dq_rai_dt
-    @. ᶜSqₛᵐ = ᶜmp_tendency.dq_sno_dt
-
     # Compute microphysics derivatives ∂(dqₓ/dt)/∂qₓ at the
     # grid-mean state for the implicit Jacobian diagonal.
-    (; ᶜmp_derivative) = p.precomputed
     @. ᶜmp_derivative = BMT.bulk_microphysics_cloud_derivatives(
-        BMT.Microphysics1Moment(),
-        cmp,
-        thp,
-        Y.c.ρ,
-        ᶜT,
-        ᶜq_tot_safe,
-        ᶜq_liq,
-        ᶜq_ice,
-        ᶜq_rai,
-        ᶜq_sno,
+        BMT.Microphysics1Moment(), cmp, thp, Y.c.ρ, ᶜT,
+        ᶜq_tot_safe, ᶜq_liq, ᶜq_ice, ᶜq_rai, ᶜq_sno,
     )
-
     return nothing
 end
 
 function set_microphysics_tendency_cache!(
-    Y,
-    p,
-    ::NonEquilibriumMicrophysics1M,
-    ::DiagnosticEDMFX,
+    Y, p, ::NonEquilibriumMicrophysics1M, ::DiagnosticEDMFX,
 )
+    (; dt) = p
+    (; ᶜT, ᶜp, ᶜq_tot_safe, ᶜmp_tendency, ᶜmp_derivative) = p.precomputed
+    (; ᶜT′T′, ᶜq′q′) = p.precomputed # T-based variances from cache
+
     thp = CAP.thermodynamics_params(p.params)
     cm1 = CAP.microphysics_1m_params(p.params)
-    (; dt) = p
 
-    (; ᶜT, ᶜp, ᶜq_tot_safe, ᶜSqₗᵐ⁰, ᶜSqᵢᵐ⁰, ᶜSqᵣᵐ⁰, ᶜSqₛᵐ⁰, ᶜmp_tendency, ᶜmp_derivative) =
-        p.precomputed
+    ### Updraft contribution is computed in the diagnostic EDMF integral loop
 
-    # Environment specific humidities
+    ### Environment contribution
     ᶜq_liq = @. lazy(specific(Y.c.ρq_liq, Y.c.ρ))
     ᶜq_ice = @. lazy(specific(Y.c.ρq_ice, Y.c.ρ))
     ᶜq_rai = @. lazy(specific(Y.c.ρq_rai, Y.c.ρ))
     ᶜq_sno = @. lazy(specific(Y.c.ρq_sno, Y.c.ρ))
 
-    # Get T-based variances from cache
-    (; ᶜT′T′, ᶜq′q′) = p.precomputed
     sgs_quad = something(p.atmos.sgs_quadrature, GridMeanSGS())
-
-    # Integrate microphysics tendencies over SGS fluctuations
+    # Grid mean or quadrature sum over the SGS fluctuations
     # (writes into pre-allocated ᶜmp_tendency to avoid NamedTuple allocation)
     @. ᶜmp_tendency = microphysics_tendencies_quadrature(
-        BMT.Microphysics1Moment(),
-        sgs_quad,
-        cm1,
-        thp,
-        Y.c.ρ,
-        ᶜp,
-        ᶜT,
-        ᶜq_tot_safe,
-        ᶜq_liq,
-        ᶜq_ice,
-        ᶜq_rai,
-        ᶜq_sno,
-        ᶜT′T′,
-        ᶜq′q′,
-        correlation_Tq(p.params),
+        BMT.Microphysics1Moment(), sgs_quad, cm1, thp, Y.c.ρ, ᶜp, ᶜT,
+        ᶜq_tot_safe, ᶜq_liq, ᶜq_ice, ᶜq_rai, ᶜq_sno,
+        ᶜT′T′, ᶜq′q′, correlation_Tq(p.params),
     )
-
-    # Apply physically motivated tendency limits
+    # Apply the limiter
     apply_1m_tendency_limits!(
         ᶜmp_tendency, p.atmos.microphysics_tendency_timestepping,
         thp, ᶜq_tot_safe, ᶜq_liq, ᶜq_ice, ᶜq_rai, ᶜq_sno, dt,
     )
-    @. ᶜSqₗᵐ⁰ = ᶜmp_tendency.dq_lcl_dt
-    @. ᶜSqᵢᵐ⁰ = ᶜmp_tendency.dq_icl_dt
-    @. ᶜSqᵣᵐ⁰ = ᶜmp_tendency.dq_rai_dt
-    @. ᶜSqₛᵐ⁰ = ᶜmp_tendency.dq_sno_dt
 
     # Compute microphysics derivatives ∂(dqₓ/dt)/∂qₓ at the
     # grid-mean state for the implicit Jacobian diagonal.
     @. ᶜmp_derivative = BMT.bulk_microphysics_cloud_derivatives(
-        BMT.Microphysics1Moment(),
-        cm1,
-        thp,
-        Y.c.ρ,
-        ᶜT,
-        ᶜq_tot_safe,
-        ᶜq_liq,
-        ᶜq_ice,
-        ᶜq_rai,
-        ᶜq_sno,
+        BMT.Microphysics1Moment(), cm1, thp, Y.c.ρ, ᶜT,
+        ᶜq_tot_safe, ᶜq_liq, ᶜq_ice, ᶜq_rai, ᶜq_sno,
     )
-
     return nothing
 end
+
 function set_microphysics_tendency_cache!(
-    Y,
-    p,
-    ::NonEquilibriumMicrophysics1M,
-    ::PrognosticEDMFX,
+    Y, p, ::NonEquilibriumMicrophysics1M, tm::PrognosticEDMFX,
 )
     (; dt) = p
+    (; ᶜT, ᶜq_tot_safe) = p.precomputed
+    (; ᶜρʲs, ᶜTʲs, ᶜq_tot_safeʲs) = p.precomputed
+    (; ᶜT⁰, ᶜp, ᶜq_tot_safe⁰, ᶜq_liq_rai⁰, ᶜq_ice_sno⁰) = p.precomputed
+    (; ᶜmp_tendency⁰, ᶜmp_derivative) = p.precomputed
+    (; ᶜmp_tendencyʲs, ᶜmp_derivativeʲs) = p.precomputed
+    (; ᶜT′T′, ᶜq′q′) = p.precomputed # T-based variances from cache
+
     thp = CAP.thermodynamics_params(p.params)
     cmp = CAP.microphysics_1m_params(p.params)
 
-    (; ᶜSqₗᵐʲs, ᶜSqᵢᵐʲs, ᶜSqᵣᵐʲs, ᶜSqₛᵐʲs, ᶜρʲs, ᶜTʲs) = p.precomputed
-    (; ᶜSqₗᵐ⁰, ᶜSqᵢᵐ⁰, ᶜSqᵣᵐ⁰, ᶜSqₛᵐ⁰, ᶜmp_tendency, ᶜmp_derivative) = p.precomputed
-    (; ᶜ∂Sqₗʲs, ᶜ∂Sqᵢʲs) = p.precomputed
-    (; ᶜT⁰, ᶜp, ᶜq_tot_safe⁰, ᶜq_liq_rai⁰, ᶜq_ice_sno⁰) = p.precomputed
+    n = n_mass_flux_subdomains(tm)
 
-    n = n_mass_flux_subdomains(p.atmos.turbconv_model)
-
+    ### Updraft contribution
     for j in 1:n
-        # Microphysics tendencies from the updrafts (using fused BMT API)
         compute_1m_precipitation_tendencies!(
-            ᶜSqₗᵐʲs.:($j),
-            ᶜSqᵢᵐʲs.:($j),
-            ᶜSqᵣᵐʲs.:($j),
-            ᶜSqₛᵐʲs.:($j),
-            ᶜmp_tendency,
-            ᶜρʲs.:($j),
-            p.precomputed.ᶜq_tot_safeʲs.:($j),
-            Y.c.sgsʲs.:($j).q_liq,
-            Y.c.sgsʲs.:($j).q_ice,
-            Y.c.sgsʲs.:($j).q_rai,
-            Y.c.sgsʲs.:($j).q_sno,
-            ᶜTʲs.:($j),
-            dt,
-            cmp,
-            thp,
+            ᶜmp_tendencyʲs.:($j), ᶜρʲs.:($j), ᶜq_tot_safeʲs.:($j),
+            Y.c.sgsʲs.:($j).q_liq, Y.c.sgsʲs.:($j).q_ice,
+            Y.c.sgsʲs.:($j).q_rai, Y.c.sgsʲs.:($j).q_sno,
+            ᶜTʲs.:($j), dt, cmp, thp,
         )
         # BMT cloud derivatives at updraft j state (same pattern as grid-mean).
-        # ᶜmp_derivative is reused as scratch; the per-updraft ∂S/∂q values are
-        # immediately extracted into ᶜ∂Sqₗʲs / ᶜ∂Sqᵢʲs for use in the Jacobian.
-        @. ᶜmp_derivative = BMT.bulk_microphysics_cloud_derivatives(
-            BMT.Microphysics1Moment(),
-            cmp,
-            thp,
-            ᶜρʲs.:($$j),
-            ᶜTʲs.:($$j),
+        @. ᶜmp_derivativeʲs.:($$j) = BMT.bulk_microphysics_cloud_derivatives(
+            BMT.Microphysics1Moment(), cmp, thp, ᶜρʲs.:($$j), ᶜTʲs.:($$j),
             p.precomputed.ᶜq_tot_safeʲs.:($$j),
-            Y.c.sgsʲs.:($$j).q_liq,
-            Y.c.sgsʲs.:($$j).q_ice,
-            Y.c.sgsʲs.:($$j).q_rai,
-            Y.c.sgsʲs.:($$j).q_sno,
+            Y.c.sgsʲs.:($$j).q_liq, Y.c.sgsʲs.:($$j).q_ice,
+            Y.c.sgsʲs.:($$j).q_rai, Y.c.sgsʲs.:($$j).q_sno,
         )
-        @. ᶜ∂Sqₗʲs.:($$j) = ᶜmp_derivative.∂tendency_∂q_lcl
-        @. ᶜ∂Sqᵢʲs.:($$j) = ᶜmp_derivative.∂tendency_∂q_icl
     end
 
-    # Microphysics tendencies from the environment (with SGS quadrature)
+    ### Environment contribution
     ᶜq_liq⁰ = ᶜspecific_env_value(@name(q_liq), Y, p)
     ᶜq_ice⁰ = ᶜspecific_env_value(@name(q_ice), Y, p)
     ᶜq_rai⁰ = ᶜspecific_env_value(@name(q_rai), Y, p)
     ᶜq_sno⁰ = ᶜspecific_env_value(@name(q_sno), Y, p)
-    ᶜρ⁰ = @. lazy(TD.air_density(thp, ᶜT⁰, ᶜp, ᶜq_tot_safe⁰, ᶜq_liq_rai⁰, ᶜq_ice_sno⁰))
-
-    SG_quad = something(p.atmos.sgs_quadrature, GridMeanSGS())
-
-    # Get T-based variances from cache
-    (; ᶜT′T′, ᶜq′q′) = p.precomputed
-
-    # Integrate microphysics tendencies over SGS fluctuations
-    # (writes into pre-allocated ᶜmp_tendency to avoid NamedTuple allocation)
-    @. ᶜmp_tendency = microphysics_tendencies_quadrature(
-        BMT.Microphysics1Moment(),
-        SG_quad,
-        cmp,
-        thp,
-        ᶜρ⁰,
-        ᶜp,
-        ᶜT⁰,
-        ᶜq_tot_safe⁰,
-        ᶜq_liq⁰,
-        ᶜq_ice⁰,
-        ᶜq_rai⁰,
-        ᶜq_sno⁰,
-        ᶜT′T′,
-        ᶜq′q′,
-        correlation_Tq(p.params),
+    ᶜρ⁰ = @. lazy(
+        TD.air_density(thp, ᶜT⁰, ᶜp, ᶜq_tot_safe⁰, ᶜq_liq_rai⁰, ᶜq_ice_sno⁰)
     )
-
-    # Apply physically motivated tendency limits
+    SG_quad = something(p.atmos.sgs_quadrature, GridMeanSGS())
+    # Grid mean or quadrature sum over the SGS fluctuations
+    # (writes into pre-allocated ᶜmp_tendency to avoid NamedTuple allocation)
+    @. ᶜmp_tendency⁰ = microphysics_tendencies_quadrature(
+        BMT.Microphysics1Moment(), SG_quad, cmp, thp, ᶜρ⁰, ᶜp, ᶜT⁰,
+        ᶜq_tot_safe⁰, ᶜq_liq⁰, ᶜq_ice⁰, ᶜq_rai⁰, ᶜq_sno⁰,
+        ᶜT′T′, ᶜq′q′, correlation_Tq(p.params),
+    )
+    # Apply the limiter
     apply_1m_tendency_limits!(
-        ᶜmp_tendency, p.atmos.microphysics_tendency_timestepping,
+        ᶜmp_tendency⁰, p.atmos.microphysics_tendency_timestepping,
         thp, ᶜq_tot_safe⁰, ᶜq_liq⁰, ᶜq_ice⁰, ᶜq_rai⁰, ᶜq_sno⁰, dt,
     )
-    @. ᶜSqₗᵐ⁰ = ᶜmp_tendency.dq_lcl_dt
-    @. ᶜSqᵢᵐ⁰ = ᶜmp_tendency.dq_icl_dt
-    @. ᶜSqᵣᵐ⁰ = ᶜmp_tendency.dq_rai_dt
-    @. ᶜSqₛᵐ⁰ = ᶜmp_tendency.dq_sno_dt
 
     # Compute microphysics derivatives ∂(dqₓ/dt)/∂qₓ at the
     # grid-mean state for the implicit Jacobian diagonal.
-    # Note: ᶜmp_derivative was used as scratch for updrafts above; we now
-    # overwrite it with the grid-mean derivatives for the grid-mean Jacobian.
-    (; ᶜT, ᶜq_tot_safe) = p.precomputed
     ᶜq_liq_gm = @. lazy(specific(Y.c.ρq_liq, Y.c.ρ))
     ᶜq_ice_gm = @. lazy(specific(Y.c.ρq_ice, Y.c.ρ))
     ᶜq_rai_gm = @. lazy(specific(Y.c.ρq_rai, Y.c.ρ))
     ᶜq_sno_gm = @. lazy(specific(Y.c.ρq_sno, Y.c.ρ))
     @. ᶜmp_derivative = BMT.bulk_microphysics_cloud_derivatives(
-        BMT.Microphysics1Moment(),
-        cmp,
-        thp,
-        Y.c.ρ,
-        ᶜT,
-        ᶜq_tot_safe,
-        ᶜq_liq_gm,
-        ᶜq_ice_gm,
-        ᶜq_rai_gm,
-        ᶜq_sno_gm,
+        BMT.Microphysics1Moment(), cmp, thp, Y.c.ρ, ᶜT, ᶜq_tot_safe,
+        ᶜq_liq_gm, ᶜq_ice_gm, ᶜq_rai_gm, ᶜq_sno_gm,
     )
-
     return nothing
 end
-function set_microphysics_tendency_cache!(Y, p, ::NonEquilibriumMicrophysics2M, _)
+
+###
+### 2-moment + P3 microphysics
+###
+
+function set_microphysics_tendency_cache!(
+    Y, p, ::NonEquilibriumMicrophysics2M, _
+)
     (; dt) = p
-    (; ᶜT, ᶜq_tot_safe, ᶜSqₗᵐ, ᶜSqᵢᵐ, ᶜSqᵣᵐ, ᶜSqₛᵐ, ᶜmp_tendency) = p.precomputed
-    (; ᶜSnₗᵐ, ᶜSnᵣᵐ) = p.precomputed
+    (; ᶜT, ᶜp, ᶜu, ᶜq_tot_safe, ᶜmp_tendency) = p.precomputed
 
     # get thermodynamics and microphysics params
     cmp = CAP.microphysics_2m_params(p.params)
@@ -1387,74 +1206,80 @@ function set_microphysics_tendency_cache!(Y, p, ::NonEquilibriumMicrophysics2M, 
     ᶜn_liq = @. lazy(specific(Y.c.ρn_liq, Y.c.ρ))
     ᶜn_rai = @. lazy(specific(Y.c.ρn_rai, Y.c.ρ))
 
-    # Compute all 2M tendencies via quadrature path
+    # Grid mean or quadrature sum over the SGS fluctuations
     # (writes into pre-allocated ᶜmp_tendency to avoid NamedTuple allocation)
+    # TODO - looks like only grid-mean version is implemented now
     sgs_quad = something(p.atmos.sgs_quadrature, GridMeanSGS())
     @. ᶜmp_tendency = microphysics_tendencies_quadrature_2m(
-        sgs_quad,
-        cmp,
-        thp,
-        Y.c.ρ,
-        ᶜT,
-        ᶜq_tot_safe,
-        ᶜq_liq,
-        ᶜn_liq,
-        ᶜq_rai,
-        ᶜn_rai,
+        sgs_quad, cmp, thp, Y.c.ρ, ᶜT,
+        ᶜq_tot_safe, ᶜq_liq, ᶜn_liq, ᶜq_rai, ᶜn_rai,
     )
-
-    # Apply physically motivated tendency limits
+    # Apply the limiter
     apply_2m_tendency_limits!(
-        ᶜmp_tendency, p.atmos.microphysics_tendency_timestepping, ᶜq_liq, ᶜn_liq, ᶜq_rai,
-        ᶜn_rai, dt,
+        ᶜmp_tendency, p.atmos.microphysics_tendency_timestepping,
+        ᶜq_liq, ᶜn_liq, ᶜq_rai, ᶜn_rai, dt,
     )
-    @. ᶜSqₗᵐ = ᶜmp_tendency.dq_lcl_dt
-    @. ᶜSnₗᵐ = ᶜmp_tendency.dn_lcl_dt
-    @. ᶜSqᵣᵐ = ᶜmp_tendency.dq_rai_dt
-    @. ᶜSnᵣᵐ = ᶜmp_tendency.dn_rai_dt
+    #TODO - implement cold processes via P3
+    @. ᶜmp_tendency.dq_ice_dt = 0
+    @. ᶜmp_tendency.dq_sno_dt = 0
 
-    #TODO - implement 2M cold processes!
-    @. ᶜSqᵢᵐ = 0
-    @. ᶜSqₛᵐ = 0
+    # Aerosol activation based on ARG 2000. Requires prescribed aerosols.
+    # TODO - should be part of BMT
+    # TODO - also only acting on grid mean
+    if hasproperty(p, :tracers) &&
+        hasproperty(p.tracers, :prescribed_aerosols_field)
 
+        # Get aerosol parameters and vertical velocity
+        pap = p.params.prescribed_aerosol_params
+        acp = CAP.microphysics_cloud_params(p.params).activation
+        ᶜw = @. lazy(w_component(Geometry.WVector(ᶜu)))
+
+        # Get prescribed aerosol concentrations
+        seasalt_num = p.scratch.ᶜtemp_scalar
+        seasalt_mean_radius = p.scratch.ᶜtemp_scalar_2
+        sulfate_num = p.scratch.ᶜtemp_scalar_3
+        compute_prescribed_aerosol_properties!(
+            seasalt_num, seasalt_mean_radius, sulfate_num,
+            p.tracers.prescribed_aerosols_field, pap,
+        )
+        # Compute aerosol activation
+        @. ᶜmp_tendency.dn_lcl_dt +=
+            aerosol_activation_sources(
+                acp, seasalt_num, seasalt_mean_radius, sulfate_num,
+                specific(Y.c.ρq_tot, Y.c.ρ),
+                specific(Y.c.ρq_liq + Y.c.ρq_rai, Y.c.ρ),
+                specific(Y.c.ρq_ice + Y.c.ρq_sno, Y.c.ρ),
+                specific(Y.c.ρn_liq + Y.c.ρn_rai, Y.c.ρ),
+                Y.c.ρ, ᶜw, cmp, thp, ᶜT, ᶜp, dt, pap,
+            )
+    end
     return nothing
 end
+
 function set_microphysics_tendency_cache!(
-    Y,
-    p,
-    ::NonEquilibriumMicrophysics2M,
-    ::DiagnosticEDMFX,
+    Y, p, ::NonEquilibriumMicrophysics2M, ::DiagnosticEDMFX,
 )
     error("Not implemented yet")
     return nothing
 end
+
 function set_microphysics_tendency_cache!(
-    Y,
-    p,
-    ::NonEquilibriumMicrophysics2M,
-    ::PrognosticEDMFX,
+    Y, p, ::NonEquilibriumMicrophysics2M, tm::PrognosticEDMFX,
 )
     (; dt) = p
     thp = CAP.thermodynamics_params(p.params)
     cm1p = CAP.microphysics_1m_params(p.params)
     cm2p = CAP.microphysics_2m_params(p.params)
     cmc = CAP.microphysics_cloud_params(p.params)
+    acp = CAP.microphysics_cloud_params(p.params).activation
+    pap = p.params.prescribed_aerosol_params
 
-    (;
-        ᶜSqₗᵐʲs,
-        ᶜSqᵢᵐʲs,
-        ᶜSqᵣᵐʲs,
-        ᶜSqₛᵐʲs,
-        ᶜSnₗᵐʲs,
-        ᶜSnᵣᵐʲs,
-        ᶜρʲs,
-        ᶜTʲs,
-        ᶜuʲs,
-    ) = p.precomputed
-    (; ᶜSqₗᵐ⁰, ᶜSqᵢᵐ⁰, ᶜSqᵣᵐ⁰, ᶜSqₛᵐ⁰, ᶜSnₗᵐ⁰, ᶜSnᵣᵐ⁰, ᶜu⁰, ᶜmp_tendency) =
-        p.precomputed
-    (; ᶜT⁰, ᶜp, ᶜq_tot_safe⁰, ᶜq_liq_rai⁰, ᶜq_ice_sno⁰) = p.precomputed
+    n = n_mass_flux_subdomains(tm)
+
+    (; ᶜρʲs, ᶜTʲs, ᶜuʲs, ᶜq_tot_safeʲs) = p.precomputed
+    (; ᶜu⁰, ᶜT⁰, ᶜp, ᶜq_tot_safe⁰, ᶜq_liq_rai⁰, ᶜq_ice_sno⁰) = p.precomputed
     (; ᶜwₗʲs, ᶜwᵢʲs, ᶜwᵣʲs, ᶜwₛʲs, ᶜwₙₗʲs, ᶜwₙᵣʲs) = p.precomputed
+    (; ᶜmp_tendency⁰, ᶜmp_tendencyʲs) = p.precomputed
 
     # Get prescribed aerosol concentrations
     seasalt_num = p.scratch.ᶜtemp_scalar_3
@@ -1463,11 +1288,8 @@ function set_microphysics_tendency_cache!(
     if hasproperty(p, :tracers) &&
        hasproperty(p.tracers, :prescribed_aerosols_field)
         compute_prescribed_aerosol_properties!(
-            seasalt_num,
-            seasalt_mean_radius,
-            sulfate_num,
-            p.tracers.prescribed_aerosols_field,
-            p.params.prescribed_aerosol_params,
+            seasalt_num, seasalt_mean_radius, sulfate_num,
+            p.tracers.prescribed_aerosols_field, pap,
         )
     else
         @. seasalt_num = 0
@@ -1475,115 +1297,71 @@ function set_microphysics_tendency_cache!(
         @. sulfate_num = 0
     end
 
-    # Compute sources
-    n = n_mass_flux_subdomains(p.atmos.turbconv_model)
+    ### Updraft contribution
     for j in 1:n
-
-        # Microphysics tendencies from the updrafts (using fused BMT API)
-        # Note: ice and snow tendencies are zero in warm rain 2M scheme
+        # Microphysics
         compute_2m_precipitation_tendencies!(
-            ᶜSqₗᵐʲs.:($j),
-            ᶜSnₗᵐʲs.:($j),
-            ᶜSqᵣᵐʲs.:($j),
-            ᶜSnᵣᵐʲs.:($j),
-            ᶜmp_tendency,
-            ᶜρʲs.:($j),
-            p.precomputed.ᶜq_tot_safeʲs.:($j),
-            Y.c.sgsʲs.:($j).q_liq,
-            Y.c.sgsʲs.:($j).n_liq,
-            Y.c.sgsʲs.:($j).q_rai,
-            Y.c.sgsʲs.:($j).n_rai,
-            ᶜTʲs.:($j),
-            dt,
-            cm2p,
-            thp,
+            ᶜmp_tendencyʲs.:($j), ᶜρʲs.:($j), ᶜq_tot_safeʲs.:($j),
+            Y.c.sgsʲs.:($j).q_liq, Y.c.sgsʲs.:($j).n_liq,
+            Y.c.sgsʲs.:($j).q_rai, Y.c.sgsʲs.:($j).n_rai,
+            ᶜTʲs.:($j), dt,  cm2p, thp,
             p.atmos.microphysics_tendency_timestepping,
         )
-        @. ᶜSqᵢᵐʲs.:($$j) = 0
-        @. ᶜSqₛᵐʲs.:($$j) = 0
+        ᶜmp_tendencyʲ.:($$j).dq_ice_dt = 0
+        ᶜmp_tendencyʲ.:($$j).dq_sno_dt = 0
+        # Aerosol activation
         ᶜwʲ = @. lazy(max(0, w_component(Geometry.WVector(ᶜuʲs.:($$j)))))
-        @. ᶜSnₗᵐʲs += aerosol_activation_sources(
-            (cmc.activation,),  # TODO: remove parenthesis once CMP parameter types are Base.broadcastable
-            seasalt_num,
-            seasalt_mean_radius,
-            sulfate_num,
-            p.precomputed.ᶜq_tot_safeʲs.:($$j),
+        @. ᶜmp_tendencyʲs.:($$j).dn_lcl_dt += aerosol_activation_sources(
+            cmc.activation, seasalt_num, seasalt_mean_radius, sulfate_num,
+            ᶜq_tot_safeʲs.:($$j),
             Y.c.sgsʲs.:($$j).q_liq + Y.c.sgsʲs.:($$j).q_rai,
             Y.c.sgsʲs.:($$j).q_ice + Y.c.sgsʲs.:($$j).q_sno,
             Y.c.sgsʲs.:($$j).n_liq + Y.c.sgsʲs.:($$j).n_rai,
-            ᶜρʲs.:($$j),
-            ᶜwʲ,
-            (cm2p,),
-            thp,
-            ᶜTʲs.:($$j),
-            ᶜp,
-            dt,
-            (p.params.prescribed_aerosol_params,),
+            ᶜρʲs.:($$j), ᶜwʲ, cm2p, thp, ᶜTʲs.:($$j), ᶜp, dt, pap,
         )
     end
 
-    # Microphysics tendencies from the environment (with SGS quadrature)
+    ### Environment contribution
     ᶜn_liq⁰ = ᶜspecific_env_value(@name(n_liq), Y, p)
     ᶜn_rai⁰ = ᶜspecific_env_value(@name(n_rai), Y, p)
     ᶜq_liq⁰ = ᶜspecific_env_value(@name(q_liq), Y, p)
     ᶜq_ice⁰ = ᶜspecific_env_value(@name(q_ice), Y, p)
     ᶜq_rai⁰ = ᶜspecific_env_value(@name(q_rai), Y, p)
     ᶜq_sno⁰ = ᶜspecific_env_value(@name(q_sno), Y, p)
-    ᶜρ⁰ = @. lazy(TD.air_density(thp, ᶜT⁰, ᶜp, ᶜq_tot_safe⁰, ᶜq_liq_rai⁰, ᶜq_ice_sno⁰))
+    ᶜρ⁰ = @. lazy(
+        TD.air_density( thp, ᶜT⁰, ᶜp, ᶜq_tot_safe⁰, ᶜq_liq_rai⁰, ᶜq_ice_sno⁰)
+    )
 
+    # Environment mean or quadrature sum over the SGS fluctuations
+    # TODO - looks like only mean version is implemented now
     SG_quad = something(p.atmos.sgs_quadrature, GridMeanSGS())
-
-    # Integrate microphysics tendencies over SGS fluctuations
-    # (writes into pre-allocated ᶜmp_tendency to avoid NamedTuple allocation)
-    @. ᶜmp_tendency = microphysics_tendencies_quadrature_2m(
-        SG_quad,
-        cm2p,
-        thp,
-        ᶜρ⁰,
-        ᶜT⁰,
-        ᶜq_tot_safe⁰,
-        ᶜq_liq⁰,
-        ᶜn_liq⁰,
-        ᶜq_rai⁰,
-        ᶜn_rai⁰,
+    @. ᶜmp_tendency⁰ = microphysics_tendencies_quadrature_2m(
+        SG_quad, cm2p, thp, ᶜρ⁰, ᶜT⁰, ᶜq_tot_safe⁰,
+        ᶜq_liq⁰, ᶜn_liq⁰, ᶜq_rai⁰, ᶜn_rai⁰,
     )
-
-    # Apply physically motivated tendency limits
+    # Apply the limiter
     apply_2m_tendency_limits!(
-        ᶜmp_tendency, p.atmos.microphysics_tendency_timestepping, ᶜq_liq⁰, ᶜn_liq⁰, ᶜq_rai⁰,
-        ᶜn_rai⁰, dt,
+        ᶜmp_tendency⁰, p.atmos.microphysics_tendency_timestepping,
+        ᶜq_liq⁰, ᶜn_liq⁰, ᶜq_rai⁰, ᶜn_rai⁰, dt,
     )
-    @. ᶜSqₗᵐ⁰ = ᶜmp_tendency.dq_lcl_dt
-    @. ᶜSnₗᵐ⁰ = ᶜmp_tendency.dn_lcl_dt
-    @. ᶜSqᵣᵐ⁰ = ᶜmp_tendency.dq_rai_dt
-    @. ᶜSnᵣᵐ⁰ = ᶜmp_tendency.dn_rai_dt
-    @. ᶜSqᵢᵐ⁰ = 0
-    @. ᶜSqₛᵐ⁰ = 0
+    @. ᶜmp_tendency⁰.dq_ice_dt = 0
+    @. ᶜmp_tendency⁰.dq_sno_dt = 0
+    # Aerosol activation
+    # TODO - make it part of BMT
+    # TODO - should be included in limiting
     ᶜw⁰ = @. lazy(w_component(Geometry.WVector(ᶜu⁰)))
     @. ᶜSnₗᵐ⁰ += aerosol_activation_sources(
-        (cmc.activation,),
-        seasalt_num,
-        seasalt_mean_radius,
-        sulfate_num,
-        ᶜq_tot_safe⁰,
-        ᶜq_liq⁰ + ᶜq_rai⁰,
-        ᶜq_ice⁰ + ᶜq_sno⁰,
-        ᶜn_liq⁰ + ᶜn_rai⁰,
-        ᶜρ⁰,
-        ᶜw⁰,
-        (cm2p,),
-        thp,
-        ᶜT⁰,
-        ᶜp,
-        dt,
-        (p.params.prescribed_aerosol_params,),
+        acp, seasalt_num, seasalt_mean_radius, sulfate_num, ᶜq_tot_safe⁰,
+        ᶜq_liq⁰ + ᶜq_rai⁰, ᶜq_ice⁰ + ᶜq_sno⁰, ᶜn_liq⁰ + ᶜn_rai⁰,
+        ᶜρ⁰, ᶜw⁰, cm2p, thp, ᶜT⁰, ᶜp, dt, pap,
     )
     return nothing
 end
-function set_microphysics_tendency_cache!(Y, p, ::NonEquilibriumMicrophysics2MP3, ::Nothing)
+function set_microphysics_tendency_cache!(
+    Y, p, ::NonEquilibriumMicrophysics2MP3, _
+)
     (; dt) = p
-    (; ᶜT, ᶜSqₗᵐ, ᶜSqᵢᵐ, ᶜSqᵣᵐ, ᶜSqₛᵐ, ᶜmp_tendency) = p.precomputed
-    (; ᶜSnₗᵐ, ᶜSnᵣᵐ, ᶜScoll, ᶜlogλ) = p.precomputed
+    (; ᶜT, ᶜmp_tendency, ᶜScoll, ᶜlogλ) = p.precomputed
 
     # get thermodynamics and microphysics params
     params_2mp3 = CAP.microphysics_2mp3_params(p.params)
@@ -1594,54 +1372,35 @@ function set_microphysics_tendency_cache!(Y, p, ::NonEquilibriumMicrophysics2MP3
     ᶜq_rai = @. lazy(specific(Y.c.ρq_rai, Y.c.ρ))
     ᶜn_liq = @. lazy(specific(Y.c.ρn_liq, Y.c.ρ))
     ᶜn_rai = @. lazy(specific(Y.c.ρn_rai, Y.c.ρ))
-
     # Get specific quantities (P3 ice)
     ᶜq_ice = @. lazy(specific(Y.c.ρq_ice, Y.c.ρ))
     ᶜn_ice = @. lazy(specific(Y.c.ρn_ice, Y.c.ρ))
     ᶜq_rim = @. lazy(specific(Y.c.ρq_rim, Y.c.ρ))
     ᶜb_rim = @. lazy(specific(Y.c.ρb_rim, Y.c.ρ))
 
-    # Compute all 2M+P3 tendencies via fused BMT API
-    # (writes into pre-allocated ᶜmp_tendency to avoid NamedTuple allocation)
+    # Compute microphysics tendency
+    # TODO - looks like aerosol activation is missing
     @. ᶜmp_tendency = BMT.bulk_microphysics_tendencies(
-        BMT.Microphysics2Moment(),
-        params_2mp3,  # Microphysics2MParams with P3 ice
-        thp,
-        Y.c.ρ,
-        ᶜT,
-        ᶜq_liq,
-        ᶜn_liq,
-        ᶜq_rai,
-        ᶜn_rai,
-        ᶜq_ice,
-        ᶜn_ice,
-        ᶜq_rim,
-        ᶜb_rim,
-        ᶜlogλ,
+        BMT.Microphysics2Moment(), params_2mp3, thp, Y.c.ρ, ᶜT,
+        ᶜq_liq, ᶜn_liq, ᶜq_rai, ᶜn_rai, ᶜq_ice, ᶜn_ice, ᶜq_rim, ᶜb_rim, ᶜlogλ,
     )
-
     # Apply coupled limiting directly
-    ᶜf_liq = @. lazy(
-        coupled_sink_limit_factor(
-            ᶜmp_tendency.dq_lcl_dt, ᶜmp_tendency.dn_lcl_dt, ᶜq_liq, ᶜn_liq, dt,
-        ),
-    )
-    ᶜf_rai = @. lazy(
-        coupled_sink_limit_factor(
-            ᶜmp_tendency.dq_rai_dt, ᶜmp_tendency.dn_rai_dt, ᶜq_rai, ᶜn_rai, dt,
-        ),
-    )
-    @. ᶜSqₗᵐ = ᶜmp_tendency.dq_lcl_dt * ᶜf_liq
-    @. ᶜSnₗᵐ = ᶜmp_tendency.dn_lcl_dt * ᶜf_liq
-    @. ᶜSqᵣᵐ = ᶜmp_tendency.dq_rai_dt * ᶜf_rai
-    @. ᶜSnᵣᵐ = ᶜmp_tendency.dn_rai_dt * ᶜf_rai
-    @. ᶜSqᵢᵐ = ᶜmp_tendency.dq_ice_dt
+    ᶜf_liq = @. lazy(coupled_sink_limit_factor(
+        ᶜmp_tendency.dq_lcl_dt, ᶜmp_tendency.dn_lcl_dt, ᶜq_liq, ᶜn_liq, dt,
+    ))
+    ᶜf_rai = @. lazy(coupled_sink_limit_factor(
+        ᶜmp_tendency.dq_rai_dt, ᶜmp_tendency.dn_rai_dt, ᶜq_rai, ᶜn_rai, dt,
+    ))
+    @. ᶜmp_tendency.dq_lcl_dt *= ᶜf_liq
+    @. ᶜmp_tendency.dn_lcl_dt *= ᶜf_liq
+    @. ᶜmp_tendency.dq_rai_dt *= ᶜf_rai
+    @. ᶜmp_tendency.dn_rai_dt *= ᶜf_rai
+    # TODO - unify the P3 logic with mp_tendency
     @. ᶜScoll.dq_rim_dt = ᶜmp_tendency.dq_rim_dt
     @. ᶜScoll.db_rim_dt = ᶜmp_tendency.db_rim_dt
-
-    # Snow not used in P3 (ice encompasses all frozen hydrometeors)
-    @. ᶜSqₛᵐ = 0
-
+    # TODO - snow not used in P3 (ice encompasses all frozen hydrometeors)
+    # Fix the structure of the named tuple
+    @. ᶜmp_tendency.dq_sno_dt = 0
     return nothing
 end
 
