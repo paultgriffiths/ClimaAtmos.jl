@@ -743,30 +743,24 @@ All schemes freeze the specific microphysics tendencies computed in the
 explicit stage; only density-weighted source terms and surface fluxes are
 refreshed here.
 
-- **0M**: recomputes `ᶜS_ρq_tot` / `ᶜS_ρe_tot` from the frozen
+- **0M**: recomputes `ρ × mp_tendency.dq_tot_dt` from the frozen
   `ᶜmp_tendency` (ρ × tendency).  For EDMF variants, the per-subdomain
-  specific tendencies (`ᶜSqₜᵐ⁰`, `ᶜSqₜᵐʲs`) are re-aggregated with the
-  current ρ / ρa.
+  specific tendencies are re-aggregated with the current ρ / ρa.
 - **1M/2M**: refreshes only `set_precipitation_surface_fluxes!`.  The
-  specific tendencies (`ᶜSqₗᵐ`, etc.) are frozen; density weighting is
+  specific tendencies (mp_tendency) are frozen; density weighting is
   applied at tendency-evaluation time in `tendency.jl`.  The Jacobian uses
-  frozen `ᶜmp_derivative` (cloud) and `S/q` (precip) computed from the
+  frozen `ᶜmp_derivative` (cloud) and `source/q` (precip) computed from the
   frozen tendencies and the current iterate.
 - **default**: no-op (microphysics not active or not implicit).
 """
-# 0M + DiagnosticEDMFX: re-aggregate the per-subdomain specific tendencies
-# (ᶜSqₜᵐ⁰, ᶜSqₜᵐʲs) with the current density (ρ changes at each Newton
-# iterate; the specific tendencies themselves do not).
-
-# 1M: lightweight refresh only — surface fluxes.
-# Specific tendencies (ᶜSqₗᵐ, etc.) are frozen from the explicit stage.
-# 2M: lightweight refresh only — surface fluxes.
-
 update_implicit_microphysics_cache!(Y, p, _, _) = nothing
 
 function update_implicit_microphysics_cache!(
     Y, p, mm::EquilibriumMicrophysics0M, _,
 )
+    (; ᶜmp_tendency, ᶜρ_dq_tot_dt) = p.precomputed
+    @. ᶜρ_dq_tot_dt = Y.c.ρ * ᶜmp_tendency.dq_tot_dt
+
     set_precipitation_surface_fluxes!(Y, p, mm)
     return nothing
 end
@@ -774,21 +768,12 @@ end
 function update_implicit_microphysics_cache!(
     Y, p, mm::EquilibriumMicrophysics0M, tm::DiagnosticEDMFX,
 )
-    (; ᶜΦ) = p.core
-    (; ᶜS_ρq_tot) = p.precomputed
-    (; ᶜSqₜᵐ⁰, ᶜSqₜᵐʲs) = p.precomputed
-    (; ᶜTʲs, ᶜq_liq_raiʲs, ᶜq_ice_snoʲs, ᶜρaʲs) = p.precomputed
-    (; ᶜT, ᶜq_liq_rai, ᶜq_ice_sno) = p.precomputed
-    thermo_params = CAP.thermodynamics_params(p.params)
-
+    (; ᶜmp_tendency, ᶜmp_tendencyʲs, ᶜρaʲs, ᶜρ_dq_tot_dt) = p.precomputed
     n = n_mass_flux_subdomains(tm)
-    ᶜρa⁰ = @. lazy(ρa⁰(Y.c.ρ, p.precomputed.ᶜρaʲs, tm))
 
-    # Environment contribution
-    @. ᶜS_ρq_tot = ᶜSqₜᵐ⁰ * ᶜρa⁰
-    # Updraft contributions
+    @. ᶜρ_dq_tot_dt = ᶜmp_tendency.dq_tot_dt * ρa⁰(Y.c.ρ, ᶜρaʲs, tm)
     for j in 1:n
-        @. ᶜS_ρq_tot += ᶜSqₜᵐʲs.:($$j) * ᶜρaʲs.:($$j)
+        @. ᶜρ_dq_tot_dt += ᶜρaʲs.:($$j) * ᶜmp_tendencyʲs.:($$j).dq_tot_dt
     end
     set_precipitation_surface_fluxes!(Y, p, mm)
     return nothing
@@ -797,19 +782,12 @@ end
 function update_implicit_microphysics_cache!(
     Y, p, mm::EquilibriumMicrophysics0M, tm::PrognosticEDMFX,
 )
-    (; ᶜΦ) = p.core
-    (; ᶜS_ρq_tot) = p.precomputed
-    (; ᶜSqₜᵐ⁰, ᶜSqₜᵐʲs) = p.precomputed
-    (; ᶜTʲs, ᶜq_liq_raiʲs, ᶜq_ice_snoʲs) = p.precomputed
-    (; ᶜT⁰, ᶜq_liq_rai⁰, ᶜq_ice_sno⁰) = p.precomputed
-    thermo_params = CAP.thermodynamics_params(p.params)
-
+    (; ᶜmp_tendencyʲs, ᶜmp_tendency⁰, ᶜρ_dq_tot_dt) = p.precomputed
     n = n_mass_flux_subdomains(tm)
-    ᶜρa⁰ = @. lazy(ρa⁰(Y.c.ρ, Y.c.sgsʲs, tm))
 
-    @. ᶜS_ρq_tot = ᶜSqₜᵐ⁰ * ᶜρa⁰
+    @. ᶜρ_dq_tot_dt = ᶜmp_tendency⁰.dq_tot_dt * ρa⁰(Y.c.ρ, Y.c.sgsʲs, tm)
     for j in 1:n
-        @. ᶜS_ρq_tot += ᶜSqₜᵐʲs.:($$j) * Y.c.sgsʲs.:($$j).ρa
+        @. ᶜρ_dq_tot_dt = ᶜmp_tendencyʲs.:($$j).dq_tot_dt * Y.c.sgsʲs.:($$j).ρa
     end
     set_precipitation_surface_fluxes!(Y, p, mm)
     return nothing
@@ -1267,8 +1245,8 @@ function set_microphysics_tendency_cache!(
             ᶜTʲs.:($j), dt,  cm2p, thp,
             p.atmos.microphysics_tendency_timestepping,
         )
-        ᶜmp_tendencyʲ.:($$j).dq_ice_dt = 0
-        ᶜmp_tendencyʲ.:($$j).dq_sno_dt = 0
+        ᶜmp_tendencyʲs.:($$j).dq_ice_dt = 0
+        ᶜmp_tendencyʲs.:($$j).dq_sno_dt = 0
         # Aerosol activation
         ᶜwʲ = @. lazy(max(0, w_component(Geometry.WVector(ᶜuʲs.:($$j)))))
         @. ᶜmp_tendencyʲs.:($$j).dn_lcl_dt += aerosol_activation_sources(

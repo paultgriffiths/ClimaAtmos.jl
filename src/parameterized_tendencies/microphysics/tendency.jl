@@ -129,7 +129,7 @@ function microphysics_tendency!(Yₜ, Y, p, t,
     # Updraft contribution to grid mean tendency
     # (Sources in updrafts are applied in the diagnostic EDMF integral loop)
     for j in 1:n
-        ρ_dq_tot_dt = @. lazy(* ᶜρaʲs.:($$j) * ᶜmp_tendencyʲ.:($$j).dq_tot_dt)
+        ρ_dq_tot_dt = @. lazy(ᶜρaʲs.:($$j) * ᶜmp_tendencyʲ.:($$j).dq_tot_dt)
         @. ᶜYₜ.c.ρq_tot += ρ_dq_tot_dt
         @. ᶜYₜ.c.ρ += ρ_dq_tot_dt
         @. ᶜYₜ.c.ρe_tot += ρ_dq_tot_dt * ᶜmp_tendencyʲ.:($$j).e_tot_hlpr

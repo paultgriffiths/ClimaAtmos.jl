@@ -93,8 +93,7 @@ function implicit_precomputed_quantities(Y, atmos)
         if atmos.microphysics_tendency_timestepping == Implicit() &&
            microphysics_model isa EquilibriumMicrophysics0M
             (;
-                ᶜS_ρq_tot = similar(Y.c, FT),
-                ᶜS_ρe_tot = similar(Y.c, FT),
+                ᶜρ_dq_tot_dt = similar(Y.c, FT),
             )
         else
             (;)
@@ -181,21 +180,25 @@ function precomputed_quantities(Y, atmos)
         (; ᶜwₗ = similar(Y.c, FT), ᶜwᵢ = similar(Y.c, FT)) : (;)
 
     # Helper named tuples for microphysics cache
-    MP0_NT = @NamedTuple{dq_tot_dt::FT, e_tot_hlpr}
+    MP0_NT = @NamedTuple{dq_tot_dt::FT, e_tot_hlpr::FT}
     MP1_NT = @NamedTuple{
         dq_lcl_dt::FT, dq_icl_dt::FT, dq_rai_dt::FT, dq_sno_dt::FT,
     }
-    MP3_NT = @NamedTuple{
+    MP23_NT = @NamedTuple{
         dq_lcl_dt::FT, dn_lcl_dt::FT, dq_rai_dt::FT, dn_rai_dt::FT,
         dq_ice_dt::FT, dq_rim_dt::FT, db_rim_dt::FT,
     }
     ∂MP1_NT = @NamedTuple{∂tendency_∂q_lcl::FT, ∂tendency_∂q_icl::FT}
-    ∂MP3_NT = @NamedTuple{∂tendency_∂q_lcl::FT, ∂tendency_∂n_lcl::FT}
+    ∂MP23_NT = @NamedTuple{∂tendency_∂q_lcl::FT, ∂tendency_∂n_lcl::FT}
 
     if atmos.microphysics_model isa EquilibriumMicrophysics0M
-        precipitation_quantities = (; ᶜmp_tendency = similar(Y.c, MP0_NT),)
+        precipitation_quantities = (;
+            ᶜmp_tendency = similar(Y.c, MP0_NT),
+        )
     elseif atmos.microphysics_model isa NonEquilibriumMicrophysics1M
         precipitation_quantities = (;
+            ᶜwₗ = similar(Y.c, FT),
+            ᶜwᵢ = similar(Y.c, FT),
             ᶜwᵣ = similar(Y.c, FT),
             ᶜwₛ = similar(Y.c, FT),
             ᶜmp_tendency = similar(Y.c, MP1_NT),
@@ -205,12 +208,14 @@ function precomputed_quantities(Y, atmos)
            Union{NonEquilibriumMicrophysics2M, NonEquilibriumMicrophysics2MP3}
         # 2-moment microphysics
         precipitation_quantities = (;
+            ᶜwₗ= similar(Y.c, FT),
+            ᶜwᵢ= similar(Y.c, FT),
             ᶜwᵣ = similar(Y.c, FT),
             ᶜwₛ = similar(Y.c, FT),
             ᶜwₙₗ = similar(Y.c, FT),
             ᶜwₙᵣ = similar(Y.c, FT),
-            ᶜmp_tendency = similar(Y.c, MP3_NT),
-            ᶜmp_derivative = similar(Y.c, ∂MP3_NT),
+            ᶜmp_tendency = similar(Y.c, MP23_NT),
+            ᶜmp_derivative = similar(Y.c, ∂MP23_NT),
         )
         # Add additional quantities for 2M + P3
         if atmos.microphysics_model isa NonEquilibriumMicrophysics2MP3
@@ -218,7 +223,6 @@ function precomputed_quantities(Y, atmos)
                 # liquid quantities (2M warm rain)
                 precipitation_quantities...,
                 # ice quantities (P3)
-                ᶜwᵢ = similar(Y.c, FT),
                 ᶜwnᵢ = similar(Y.c, FT),
                 ᶜlogλ = similar(Y.c, FT),
                 ᶜScoll = similar(Y.c,
@@ -232,48 +236,61 @@ function precomputed_quantities(Y, atmos)
     else
         precipitation_quantities = (;)
     end
+    # TODO - is it still needed? fir explicit or implicit
     # Zero-initialize derivatives to prevent NaN from uninitialized memory
     # (PrognosticEDMFX paths may not compute ᶜmp_derivative)
-    if haskey(precipitation_quantities, :ᶜmp_derivative)
-        parent(precipitation_quantities.ᶜmp_derivative) .= 0
-    end
-    precipitation_sgs_quantities =
-        atmos.microphysics_model isa EquilibriumMicrophysics0M ?
-        (;
+    #if haskey(precipitation_quantities, :ᶜmp_derivative)
+    #    parent(precipitation_quantities.ᶜmp_derivative) .= 0
+    #end
+    if atmos.microphysics_model isa EquilibriumMicrophysics0M
+        precipitation_sgs_quantities = (;
             ᶜmp_tendencyʲs = similar(Y.c, NTuple{n, MP0_NT}),
-            ᶜmp_tendency⁰ = similar(Y.c, MP0_NT),
-        atmos.microphysics_model isa NonEquilibriumMicrophysics1M ?
-        (;
+        )
+        if atmos.turbconv_model isa PrognosticEDMFX
+            precipitation_sgs_quantities = (;
+                precipitation_sgs_quantities...,
+                ᶜmp_tendency⁰ = similar(Y.c, MP0_NT),
+            )
+        end
+    elseif atmos.microphysics_model isa NonEquilibriumMicrophysics1M
+        precipitation_sgs_quantities = (;
             ᶜmp_tendencyʲs = similar(Y.c, NTuple{n, MP1_NT}),
-            ᶜmp_tendency⁰ = similar(Y.c, MP1_NT),
+            ᶜmp_derivativeʲs = similar(Y.c, NTuple{n, ∂MP1_NT}),
             # BMT cloud derivatives ∂(dq_lcl/dt)/∂q_lcl and ∂(dq_icl/dt)/∂q_icl
             # evaluated at each updraft state (same pattern as grid-mean ᶜmp_derivative).
             # Precipitation (q_rai, q_sno) Jacobian is computed inline in
             # update_microphysics_jacobian! using S/q with the current iterate.
-            ᶜmp_derivativeʲs = similar(Y.c, NTuple{n, ∂MP1_NT}),
-            # TODO - do I also need a derivative for the envoronment?
             ᶜwₗʲs = similar(Y.c, NTuple{n, FT}),
             ᶜwᵢʲs = similar(Y.c, NTuple{n, FT}),
             ᶜwᵣʲs = similar(Y.c, NTuple{n, FT}),
             ᶜwₛʲs = similar(Y.c, NTuple{n, FT}),
-        ) :
-        atmos.microphysics_model isa NonEquilibriumMicrophysics2M ?
-        (;
-            ᶜmp_tendencyʲs = similar(Y.c, NTuple{n, MP3_NT}),
-            ᶜmp_tendency⁰ = similar(Y.c, MP3_NT),
+        )
+        if atmos.turbconv_model isa PrognosticEDMFX
+            precipitation_sgs_quantities = (;
+                precipitation_sgs_quantities...,
+                ᶜmp_tendency⁰ = similar(Y.c, MP1_NT),
+            )
+        end
+    elseif atmos.microphysics_model isa NonEquilibriumMicrophysics2M
+        precipitation_sgs_quantities = (;
+            ᶜmp_tendencyʲs = similar(Y.c, NTuple{n, MP23_NT}),
             ᶜwₗʲs = similar(Y.c, NTuple{n, FT}),
             ᶜwᵢʲs = similar(Y.c, NTuple{n, FT}),
             ᶜwᵣʲs = similar(Y.c, NTuple{n, FT}),
             ᶜwₛʲs = similar(Y.c, NTuple{n, FT}),
             ᶜwₙₗʲs = similar(Y.c, NTuple{n, FT}),
             ᶜwₙᵣʲs = similar(Y.c, NTuple{n, FT}),
-        ) : (;)
-    # Zero-initialize updraft cloud Jacobian derivatives to prevent NaN from
-    # uninitialized memory before the first call to set_microphysics_tendency_cache!
-    if haskey(precipitation_sgs_quantities, :ᶜ∂Sqₗʲs)
-        parent(precipitation_sgs_quantities.ᶜ∂Sqₗʲs) .= 0
-        parent(precipitation_sgs_quantities.ᶜ∂Sqᵢʲs) .= 0
+        )
+        if atmos.turbconv_model isa PrognosticEDMFX
+            precipitation_sgs_quantities = (;
+                precipitation_sgs_quantities...,
+                ᶜmp_tendency⁰ = similar(Y.c, MP3_NT),
+            )
+        end
+    else
+        precipitation_sgs_quantities = (;)
     end
+
     advective_sgs_quantities =
         atmos.turbconv_model isa PrognosticEDMFX ?
         (;
