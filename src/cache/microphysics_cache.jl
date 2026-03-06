@@ -868,7 +868,7 @@ function set_microphysics_tendency_cache!(Y, p, ::EquilibriumMicrophysics0M, _)
     else
         # ... or evaluate on the grid-mean.
         # TODO - should use the same EquilibriumMicrophysics0M type?
-        @. ᶜmp_tendency = BMT.bulk_microphysics_tendencies(
+        @. ᶜmp_tendency.dq_tot_dt = BMT.bulk_microphysics_tendencies(
             BMT.Microphysics0Moment(), cm0, thp, ᶜT, ᶜq_liq_rai, ᶜq_ice_sno,
         )
     end
@@ -884,7 +884,7 @@ function set_microphysics_tendency_cache!(Y, p, ::EquilibriumMicrophysics0M, _)
 end
 
 function set_microphysics_tendency_cache!(
-    Y, p, ::EquilibriumMicrophysics0M, turbconv_model::DiagnosticEDMFX,
+    Y, p, ::EquilibriumMicrophysics0M, ::DiagnosticEDMFX,
 )
     (; dt) = p
     (; ᶜΦ) = p.core
