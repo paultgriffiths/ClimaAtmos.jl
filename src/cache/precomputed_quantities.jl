@@ -89,15 +89,9 @@ function implicit_precomputed_quantities(Y, atmos)
         ) : (;)
     # Microphysics quantities that are written during set_implicit_precomputed_quantities!
     # and depend on Y (through ρa⁰), so they need Dual-typed copies for autodiff.
-    implicit_mp_quantities =
-        if atmos.microphysics_tendency_timestepping == Implicit() &&
-           microphysics_model isa EquilibriumMicrophysics0M
-            (;
-                ᶜρ_dq_tot_dt = similar(Y.c, FT),
-            )
-        else
-            (;)
-        end
+    # TODO - are they not needed
+    implicit_mp_quantities = (;)
+
     # Surface precipitation fluxes need Dual-typed copies so that
     # set_precipitation_surface_fluxes! can be called during the implicit
     # stage (AD writes Dual values into these fields).
@@ -194,6 +188,8 @@ function precomputed_quantities(Y, atmos)
     if atmos.microphysics_model isa EquilibriumMicrophysics0M
         precipitation_quantities = (;
             ᶜmp_tendency = similar(Y.c, MP0_NT),
+            ᶜρ_dq_tot_dt = similar(Y.c, FT), # Used in implicit tendency and surface fluxes
+            ᶜρ_de_tot_dt = similar(Y.c, FT),
         )
     elseif atmos.microphysics_model isa NonEquilibriumMicrophysics1M
         precipitation_quantities = (;

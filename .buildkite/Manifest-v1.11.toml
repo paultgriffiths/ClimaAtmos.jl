@@ -1,8 +1,8 @@
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.11.8"
+julia_version = "1.11.6"
 manifest_format = "2.0"
-project_hash = "a3443ac8ba8a0e41840a831b39d60b3054ed1d6f"
+project_hash = "472094a7f5adf21260d04ac9e95f907066263959"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "f7304359109c768cf32dc5fa2d371565bb63b68a"
@@ -525,9 +525,11 @@ version = "0.1.13"
 
 [[deps.CloudMicrophysics]]
 deps = ["ClimaParams", "DocStringExtensions", "ForwardDiff", "LazyArtifacts", "LogExpFunctions", "RootSolvers", "SpecialFunctions", "StaticArrays", "Thermodynamics", "UnrolledUtilities"]
-git-tree-sha1 = "b6bb9c776ff7d889bdc340f5ae983734797201f0"
+git-tree-sha1 = "46fe52ae424ccadd0165944ee664f847418df247"
+repo-rev = "aj/bmt_0m_revamp"
+repo-url = "https://github.com/CliMA/CloudMicrophysics.jl.git"
 uuid = "6a9e3e04-43cd-43ba-94b9-e8782df3c71b"
-version = "0.31.12"
+version = "0.32.0"
 
     [deps.CloudMicrophysics.extensions]
     EmulatorModelsExt = ["DataFrames", "MLJ"]

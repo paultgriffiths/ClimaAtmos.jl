@@ -758,8 +758,9 @@ update_implicit_microphysics_cache!(Y, p, _, _) = nothing
 function update_implicit_microphysics_cache!(
     Y, p, mm::EquilibriumMicrophysics0M, _,
 )
-    (; ᶜmp_tendency, ᶜρ_dq_tot_dt) = p.precomputed
+    (; ᶜmp_tendency, ᶜρ_dq_tot_dt, ᶜρ_de_tot_dt) = p.precomputed
     @. ᶜρ_dq_tot_dt = Y.c.ρ * ᶜmp_tendency.dq_tot_dt
+    @. ᶜρ_de_tot_dt = ᶜρ_dq_tot_dt * ᶜmp_tendency.e_tot_hlpr
 
     set_precipitation_surface_fluxes!(Y, p, mm)
     return nothing
@@ -768,12 +769,16 @@ end
 function update_implicit_microphysics_cache!(
     Y, p, mm::EquilibriumMicrophysics0M, tm::DiagnosticEDMFX,
 )
-    (; ᶜmp_tendency, ᶜmp_tendencyʲs, ᶜρaʲs, ᶜρ_dq_tot_dt) = p.precomputed
+    (; ᶜmp_tendency, ᶜmp_tendencyʲs, ᶜρaʲs) = p.precomputed
+    (; ᶜρ_dq_tot_dt, ᶜρ_de_tot_dt) = p.precomputed
     n = n_mass_flux_subdomains(tm)
 
     @. ᶜρ_dq_tot_dt = ᶜmp_tendency.dq_tot_dt * ρa⁰(Y.c.ρ, ᶜρaʲs, tm)
+    @. ᶜρ_de_tot_dt = ᶜρ_dq_tot_dt * ᶜmp_tendency.e_tot_hlpr
     for j in 1:n
         @. ᶜρ_dq_tot_dt += ᶜρaʲs.:($$j) * ᶜmp_tendencyʲs.:($$j).dq_tot_dt
+        @. ᶜρ_de_tot_dt += ᶜρaʲs.:($$j) * ᶜmp_tendencyʲs.:($$j).dq_tot_dt *
+                           ᶜmp_tendencyʲs.:($$j).e_tot_hlpr
     end
     set_precipitation_surface_fluxes!(Y, p, mm)
     return nothing
@@ -782,12 +787,16 @@ end
 function update_implicit_microphysics_cache!(
     Y, p, mm::EquilibriumMicrophysics0M, tm::PrognosticEDMFX,
 )
-    (; ᶜmp_tendencyʲs, ᶜmp_tendency⁰, ᶜρ_dq_tot_dt) = p.precomputed
+    (; ᶜmp_tendencyʲs, ᶜmp_tendency⁰) = p.precomputed
+    (; ᶜρ_dq_tot_dt, ᶜρ_de_tot_dt) = p.precomputed
     n = n_mass_flux_subdomains(tm)
 
     @. ᶜρ_dq_tot_dt = ᶜmp_tendency⁰.dq_tot_dt * ρa⁰(Y.c.ρ, Y.c.sgsʲs, tm)
+    @. ᶜρ_de_tot_dt = ᶜρ_dq_tot_dt⁰ * ᶜmp_tendency⁰.e_tot_hlpr
     for j in 1:n
-        @. ᶜρ_dq_tot_dt = ᶜmp_tendencyʲs.:($$j).dq_tot_dt * Y.c.sgsʲs.:($$j).ρa
+        @. ᶜρ_dq_tot_dt += ᶜmp_tendencyʲs.:($$j).dq_tot_dt * Y.c.sgsʲs.:($$j).ρa
+        @. ᶜρ_de_tot_dt += ᶜmp_tendencyʲs.:($$j).dq_tot_dt * Y.c.sgsʲs.:($$j).ρa *
+                           ᶜmp_tendencyʲs.:($$j).e_tot_hlpr
     end
     set_precipitation_surface_fluxes!(Y, p, mm)
     return nothing
@@ -880,11 +889,17 @@ function set_microphysics_tendency_cache!(Y, p, ::EquilibriumMicrophysics0M, _)
     @. ᶜmp_tendency.e_tot_hlpr = e_tot_0M_precipitation_sources_helper(
         thp, ᶜT, ᶜq_liq_rai, ᶜq_ice_sno, ᶜΦ,
     )
+
+    # TODO - duplicated with tendency and implicit cache update
+    (; ᶜρ_dq_tot_dt, ᶜρ_de_tot_dt) = p.precomputed
+    @. ᶜρ_dq_tot_dt = Y.c.ρ * ᶜmp_tendency.dq_tot_dt
+    @. ᶜρ_de_tot_dt = ᶜρ_dq_tot_dt * ᶜmp_tendency.e_tot_hlpr
+    # TODO - duplicated with tendency and implicit cache update
     return nothing
 end
 
 function set_microphysics_tendency_cache!(
-    Y, p, ::EquilibriumMicrophysics0M, ::DiagnosticEDMFX,
+    Y, p, ::EquilibriumMicrophysics0M, tm::DiagnosticEDMFX,
 )
     (; dt) = p
     (; ᶜΦ) = p.core
@@ -912,6 +927,21 @@ function set_microphysics_tendency_cache!(
     @. ᶜmp_tendency.e_tot_hlpr = e_tot_0M_precipitation_sources_helper(
         thp, ᶜT, ᶜq_liq_rai, ᶜq_ice_sno, ᶜΦ,
     )
+
+    # TODO - duplicated with tendency and implicit cache update
+    #(; ᶜmp_tendency) = p.precomputed
+    (; ᶜmp_tendencyʲs, ᶜρaʲs) = p.precomputed
+    (; ᶜρ_dq_tot_dt, ᶜρ_de_tot_dt) = p.precomputed
+    n = n_mass_flux_subdomains(tm)
+    @. ᶜρ_dq_tot_dt = ᶜmp_tendency.dq_tot_dt * ρa⁰(Y.c.ρ, ᶜρaʲs, tm)
+    @. ᶜρ_de_tot_dt = ᶜρ_dq_tot_dt * ᶜmp_tendency.e_tot_hlpr
+    for j in 1:n
+        @. ᶜρ_dq_tot_dt += ᶜρaʲs.:($$j) * ᶜmp_tendencyʲs.:($$j).dq_tot_dt
+        @. ᶜρ_de_tot_dt += ᶜρaʲs.:($$j) * ᶜmp_tendencyʲs.:($$j).dq_tot_dt *
+                           ᶜmp_tendencyʲs.:($$j).e_tot_hlpr
+    end
+    # TODO - duplicated with tendency and implicit cache update
+
     return nothing
 end
 
@@ -926,6 +956,7 @@ function set_microphysics_tendency_cache!(
     (; ᶜTʲs, ᶜq_tot_safeʲs, ᶜq_liq_raiʲs, ᶜq_ice_snoʲs) = p.precomputed
     (; ᶜT⁰, ᶜq_tot_safe⁰, ᶜq_liq_rai⁰, ᶜq_ice_sno⁰) = p.precomputed
     (; ᶜT′T′, ᶜq′q′) = p.precomputed # temperature-based variances
+    (; ᶜρ_dq_tot_dt, ᶜρ_de_tot_dt) = p.precomputed
 
     thp = CAP.thermodynamics_params(p.params)
     cm0 = CAP.microphysics_0m_params(p.params)
@@ -970,6 +1001,20 @@ function set_microphysics_tendency_cache!(
     @. ᶜmp_tendency⁰.e_tot_hlpr = e_tot_0M_precipitation_sources_helper(
         thp, ᶜT⁰, ᶜq_liq_rai⁰, ᶜq_ice_sno⁰, ᶜΦ,
     )
+
+    # TODO - duplicated with tendency and implicit cache update
+    #(; ᶜmp_tendencyʲs, ᶜmp_tendency⁰) = p.precomputed
+    (; ᶜρ_dq_tot_dt, ᶜρ_de_tot_dt) = p.precomputed
+    #n = n_mass_flux_subdomains(tm)
+    @. ᶜρ_dq_tot_dt = ᶜmp_tendency⁰.dq_tot_dt * ρa⁰(Y.c.ρ, Y.c.sgsʲs, tm)
+    @. ᶜρ_de_tot_dt = ᶜρ_dq_tot_dt⁰ * ᶜmp_tendency⁰.e_tot_hlpr
+    for j in 1:n
+        @. ᶜρ_dq_tot_dt += ᶜmp_tendencyʲs.:($$j).dq_tot_dt * Y.c.sgsʲs.:($$j).ρa
+        @. ᶜρ_de_tot_dt += ᶜmp_tendencyʲs.:($$j).dq_tot_dt * Y.c.sgsʲs.:($$j).ρa *
+                           ᶜmp_tendencyʲs.:($$j).e_tot_hlpr
+    end
+    # TODO - duplicated with tendency and implicit cache update
+
     return nothing
 end
 
@@ -996,7 +1041,7 @@ function set_microphysics_tendency_cache!(
     # Grid mean or quadrature sum over the SGS fluctuations
     # (writes into pre-allocated ᶜmp_tendency to avoid NamedTuple allocation)
     sgs_quad = something(p.atmos.sgs_quadrature, GridMeanSGS())
-    @. ᶜmp_tendency = microphysics_tendencies_quadrature(
+    @. ᶜmp_tendency = microphysics_tendencies_quadrature_1m(
         BMT.Microphysics1Moment(), sgs_quad, cmp, thp, Y.c.ρ, ᶜp, ᶜT,
         ᶜq_tot_safe, ᶜq_liq, ᶜq_ice, ᶜq_rai, ᶜq_sno,
         ᶜT′T′, ᶜq′q′, correlation_Tq(p.params),
@@ -1036,7 +1081,7 @@ function set_microphysics_tendency_cache!(
     sgs_quad = something(p.atmos.sgs_quadrature, GridMeanSGS())
     # Grid mean or quadrature sum over the SGS fluctuations
     # (writes into pre-allocated ᶜmp_tendency to avoid NamedTuple allocation)
-    @. ᶜmp_tendency = microphysics_tendencies_quadrature(
+    @. ᶜmp_tendency = microphysics_tendencies_quadrature_1m(
         BMT.Microphysics1Moment(), sgs_quad, cm1, thp, Y.c.ρ, ᶜp, ᶜT,
         ᶜq_tot_safe, ᶜq_liq, ᶜq_ice, ᶜq_rai, ᶜq_sno,
         ᶜT′T′, ᶜq′q′, correlation_Tq(p.params),
@@ -1100,7 +1145,7 @@ function set_microphysics_tendency_cache!(
     SG_quad = something(p.atmos.sgs_quadrature, GridMeanSGS())
     # Grid mean or quadrature sum over the SGS fluctuations
     # (writes into pre-allocated ᶜmp_tendency to avoid NamedTuple allocation)
-    @. ᶜmp_tendency⁰ = microphysics_tendencies_quadrature(
+    @. ᶜmp_tendency⁰ = microphysics_tendencies_quadrature_1m(
         BMT.Microphysics1Moment(), SG_quad, cmp, thp, ᶜρ⁰, ᶜp, ᶜT⁰,
         ᶜq_tot_safe⁰, ᶜq_liq⁰, ᶜq_ice⁰, ᶜq_rai⁰, ᶜq_sno⁰,
         ᶜT′T′, ᶜq′q′, correlation_Tq(p.params),
@@ -1245,8 +1290,8 @@ function set_microphysics_tendency_cache!(
             ᶜTʲs.:($j), dt,  cm2p, thp,
             p.atmos.microphysics_tendency_timestepping,
         )
-        ᶜmp_tendencyʲs.:($$j).dq_ice_dt = 0
-        ᶜmp_tendencyʲs.:($$j).dq_sno_dt = 0
+        ᶜmp_tendencyʲs.:($j).dq_ice_dt = 0
+        ᶜmp_tendencyʲs.:($j).dq_sno_dt = 0
         # Aerosol activation
         ᶜwʲ = @. lazy(max(0, w_component(Geometry.WVector(ᶜuʲs.:($$j)))))
         @. ᶜmp_tendencyʲs.:($$j).dn_lcl_dt += aerosol_activation_sources(
@@ -1356,21 +1401,21 @@ function set_precipitation_surface_fluxes!(
     microphysics_model::EquilibriumMicrophysics0M,
 )
     (; ᶜT) = p.precomputed
-    (; ᶜS_ρq_tot, ᶜS_ρe_tot) = p.precomputed
+    (; ᶜρ_dq_tot_dt, ᶜρ_de_tot_dt) = p.precomputed
     (; surface_rain_flux, surface_snow_flux) = p.precomputed
     (; col_integrated_precip_energy_tendency) = p.precomputed
 
     # update total column energy source for surface energy balance
     Operators.column_integral_definite!(
         col_integrated_precip_energy_tendency,
-        ᶜS_ρe_tot,
+        ᶜρ_de_tot_dt,
     )
     # update surface precipitation fluxes in cache for coupler's use
     thermo_params = CAP.thermodynamics_params(p.params)
     T_freeze = TD.Parameters.T_freeze(thermo_params)
     FT = eltype(p.params)
-    ᶜ3d_rain = @. lazy(ifelse(ᶜT >= T_freeze, ᶜS_ρq_tot, FT(0)))
-    ᶜ3d_snow = @. lazy(ifelse(ᶜT < T_freeze, ᶜS_ρq_tot, FT(0)))
+    ᶜ3d_rain = @. lazy(ifelse(ᶜT >= T_freeze, ᶜρ_dq_tot_dt, FT(0)))
+    ᶜ3d_snow = @. lazy(ifelse(ᶜT < T_freeze, ᶜρ_dq_tot_dt, FT(0)))
     Operators.column_integral_definite!(surface_rain_flux, ᶜ3d_rain)
     Operators.column_integral_definite!(surface_snow_flux, ᶜ3d_snow)
     return nothing

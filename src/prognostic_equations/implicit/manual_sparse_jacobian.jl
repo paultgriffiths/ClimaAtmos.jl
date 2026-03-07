@@ -1397,7 +1397,6 @@ function update_jacobian!(alg::ManualSparseJacobian, cache, Y, p, dtγ, t)
     zero_velocity_jacobian!(matrix, Y, p, t)
 end
 
-dupa
 """
     update_microphysics_jacobian!(matrix, Y, p, dtγ, sgs_advection_flag)
 
@@ -1417,10 +1416,10 @@ function update_microphysics_jacobian!(matrix, Y, p, dtγ, sgs_advection_flag)
     # 0M microphysics: diagonal entry for ρq_tot
     if p.atmos.microphysics_model isa EquilibriumMicrophysics0M
         if MatrixFields.has_field(Y, @name(c.ρq_tot))
-            (; ᶜmp_tendency) = p.precomputed
+            (; ᶜρ_dq_tot_dt) = p.precomputed
             ∂ᶜρq_tot_err_∂ᶜρq_tot = matrix[@name(c.ρq_tot), @name(c.ρq_tot)]
             @. ∂ᶜρq_tot_err_∂ᶜρq_tot += dtγ * DiagonalMatrixRow(_jac_coeff(
-                ᶜρ * ᶜmp_tendency.dρq_tot_dt, Y.c.ρq_tot
+                ᶜρ_dq_tot_dt, Y.c.ρq_tot
             ))
         end
     end

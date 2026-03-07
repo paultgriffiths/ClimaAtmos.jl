@@ -812,7 +812,7 @@ NVTX.@annotate function set_diagnostic_edmf_precomputed_quantities_do_integral!(
                         q_ice_snoʲ_prev_level,
                     )
                 @. ᶜmp_tendencyʲ_prev_level.dq_tot_dt = limit_sink(
-                    mp_tendency_prev_level.dq_tot_dt,
+                    ᶜmp_tendencyʲ_prev_level.dq_tot_dt,
                     q_totʲ_prev_level, dt,
                 )
                 @. ᶜmp_tendencyʲ_prev_level.e_tot_hlpr =
@@ -829,7 +829,7 @@ NVTX.@annotate function set_diagnostic_edmf_precomputed_quantities_do_integral!(
             elseif microphysics_model isa NonEquilibriumMicrophysics1M
                 # Microphysics tendencies from the updrafts (using fused BMT API)
                 compute_1m_precipitation_tendencies!(
-                    mp_tendencyʲ_prev_level,
+                    ᶜmp_tendencyʲ_prev_level,
                     ρʲ_prev_level,
                     q_totʲ_prev_level,
                     q_liqʲ_prev_level,
@@ -1319,7 +1319,7 @@ NVTX.@annotate function set_diagnostic_edmf_precomputed_quantities_top_bc!(
         @. ᶜuʲ = C123(Y.c.uₕ) + ᶜinterp(C123(ᶠu³ʲ))
 
         if microphysics_model isa EquilibriumMicrophysics0M
-            ᶜmp_tendencyʲ = p.precomputed.ᶜSqₜᵐʲs.:($j)
+            ᶜmp_tendencyʲ = p.precomputed.ᶜmp_tendencyʲs.:($j)
             ᶜmp_tendencyʲ_level = Fields.field_values(Fields.level(ᶜmp_tendencyʲ, i_top))
             @. ᶜmp_tendencyʲ_level.dq_tot_dt = 0
             @. ᶜmp_tendencyʲ_level.e_tot_hlpr = 0

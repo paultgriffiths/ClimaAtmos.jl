@@ -116,7 +116,7 @@ function microphysics_tendency!(Yₜ, Y, p, t,
     ::EquilibriumMicrophysics0M, turbconv_model::DiagnosticEDMFX,
 )
     # TODO ᶜmp_tendency⁰ not needed in diagnostic EDMF configuration
-    (; ᶜmp_tendency, ᶜmp_tendencyʲ, ᶜρaʲs) = p.precomputed
+    (; ᶜmp_tendency, ᶜmp_tendencyʲs, ᶜρaʲs) = p.precomputed
     n = n_mass_flux_subdomains(turbconv_model)
 
     # Environment contibution to grid mean tendency
@@ -129,10 +129,10 @@ function microphysics_tendency!(Yₜ, Y, p, t,
     # Updraft contribution to grid mean tendency
     # (Sources in updrafts are applied in the diagnostic EDMF integral loop)
     for j in 1:n
-        ρ_dq_tot_dt = @. lazy(ᶜρaʲs.:($$j) * ᶜmp_tendencyʲ.:($$j).dq_tot_dt)
+        ρ_dq_tot_dt = @. lazy(ᶜρaʲs.:($$j) * ᶜmp_tendencyʲs.:($$j).dq_tot_dt)
         @. ᶜYₜ.c.ρq_tot += ρ_dq_tot_dt
         @. ᶜYₜ.c.ρ += ρ_dq_tot_dt
-        @. ᶜYₜ.c.ρe_tot += ρ_dq_tot_dt * ᶜmp_tendencyʲ.:($$j).e_tot_hlpr
+        @. ᶜYₜ.c.ρe_tot += ρ_dq_tot_dt * ᶜmp_tendencyʲs.:($$j).e_tot_hlpr
     end
     return nothing
 end
@@ -232,13 +232,13 @@ function microphysics_tendency!(Yₜ, Y, p, t,
     # Contribution from updraft microphysics to grid mean and updraft tendency
     n = n_mass_flux_subdomains(turbconv_model)
     for j in 1:n
-        @. Yₜ.c.ρq_liq += Y.c.sgsʲs.:($$j).ρa * ᶜmp_tendencyʲs.:($$j).dq_liq_dt
-        @. Yₜ.c.ρq_ice += Y.c.sgsʲs.:($$j).ρa * ᶜmp_tendencyʲs.:($$j).dq_ice_dt
+        @. Yₜ.c.ρq_liq += Y.c.sgsʲs.:($$j).ρa * ᶜmp_tendencyʲs.:($$j).dq_lcl_dt
+        @. Yₜ.c.ρq_ice += Y.c.sgsʲs.:($$j).ρa * ᶜmp_tendencyʲs.:($$j).dq_icl_dt
         @. Yₜ.c.ρq_rai += Y.c.sgsʲs.:($$j).ρa * ᶜmp_tendencyʲs.:($$j).dq_rai_dt
         @. Yₜ.c.ρq_sno += Y.c.sgsʲs.:($$j).ρa * ᶜmp_tendencyʲs.:($$j).dq_sno_dt
 
-        @. Yₜ.c.sgsʲs.:($$j).q_liq += ᶜmp_tendencyʲs.:($$j).dq_liq_dt
-        @. Yₜ.c.sgsʲs.:($$j).q_ice += ᶜmp_tendencyʲs.:($$j).dq_ice_dt
+        @. Yₜ.c.sgsʲs.:($$j).q_liq += ᶜmp_tendencyʲs.:($$j).dq_lcl_dt
+        @. Yₜ.c.sgsʲs.:($$j).q_ice += ᶜmp_tendencyʲs.:($$j).dq_icl_dt
         @. Yₜ.c.sgsʲs.:($$j).q_rai += ᶜmp_tendencyʲs.:($$j).dq_rai_dt
         @. Yₜ.c.sgsʲs.:($$j).q_sno += ᶜmp_tendencyʲs.:($$j).dq_sno_dt
     end
