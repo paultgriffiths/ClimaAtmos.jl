@@ -452,30 +452,16 @@ function non_orographic_gravity_wave_forcing(
 
         #extract the momentum flux outside the model top.
         u_waveforcing_top = p.scratch.temp_field_level
-        copyto!(
-            Fields.field_values(u_waveforcing_top),
-            Fields.field_values(
-                Fields.level(
-                    u_waveforcing,
-                    Spaces.nlevels(axes(u_waveforcing)),
-                ),
-            ),
-        )
+        u_waveforcing_top .=
+            Fields.level(u_waveforcing, Spaces.nlevels(axes(u_waveforcing)))
         fill!(
             Fields.level(u_waveforcing, Spaces.nlevels(axes(u_waveforcing))),
             0,
         )
 
-        v_waveforcing_top = p.scratch.temp_field_level
-        copyto!(
-            Fields.field_values(v_waveforcing_top),
-            Fields.field_values(
-                Fields.level(
-                    v_waveforcing,
-                    Spaces.nlevels(axes(v_waveforcing)),
-                ),
-            ),
-        )
+        v_waveforcing_top = p.scratch.temp_field_level_2
+        v_waveforcing_top .=
+            Fields.level(v_waveforcing, Spaces.nlevels(axes(v_waveforcing)))
         fill!(
             Fields.level(v_waveforcing, Spaces.nlevels(axes(v_waveforcing))),
             0,
