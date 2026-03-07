@@ -525,11 +525,11 @@ version = "0.1.13"
 
 [[deps.CloudMicrophysics]]
 deps = ["ClimaParams", "DocStringExtensions", "ForwardDiff", "LazyArtifacts", "LogExpFunctions", "RootSolvers", "SpecialFunctions", "StaticArrays", "Thermodynamics", "UnrolledUtilities"]
-git-tree-sha1 = "46fe52ae424ccadd0165944ee664f847418df247"
+git-tree-sha1 = "58895ad7eefa4b50511440be029217aa296a2b3a"
 repo-rev = "aj/bmt_0m_revamp"
 repo-url = "https://github.com/CliMA/CloudMicrophysics.jl.git"
 uuid = "6a9e3e04-43cd-43ba-94b9-e8782df3c71b"
-version = "0.32.0"
+version = "0.31.12"
 
     [deps.CloudMicrophysics.extensions]
     EmulatorModelsExt = ["DataFrames", "MLJ"]
