@@ -53,6 +53,10 @@ import ..OrographicGravityWave
 # surface_model
 import ..SlabOceanSST
 
+# chemistry_model
+import ..NoChemistry
+import ..IdealizedChemistry
+
 # functions used to calculate diagnostics
 import ..draft_area
 import ..compute_gm_mixing_length

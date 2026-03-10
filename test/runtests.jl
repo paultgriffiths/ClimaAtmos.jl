@@ -68,6 +68,9 @@ if TEST_GROUP in ("parameterizations", "all")
     # Sponge layers (combined for shared space setup)
     @safetestset "Sponge layers" begin @time include("parameterized_tendencies/sponge.jl") end
 
+    # Chemistry
+    @safetestset "Chemistry tendency tests" begin @time include("parameterized_tendencies/chemistry.jl") end
+
     # Microphysics tests
     @safetestset "Microphysics tendency tests" begin @time include("parameterized_tendencies/microphysics/tendency.jl") end
     @safetestset "Microphysics wrappers tests" begin @time include("parameterized_tendencies/microphysics/microphysics_wrappers.jl") end

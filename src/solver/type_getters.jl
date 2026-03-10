@@ -183,6 +183,9 @@ function get_atmos(config::AtmosConfig, params)
         surface_model = get_surface_model(parsed_args),
         surface_albedo = get_surface_albedo_model(parsed_args, params, FT),
 
+        # AtmosChemistry
+        chemistry_model = parsed_args["chemistry"] ? IdealizedChemistry() : NoChemistry(),
+
         # Top-level options (not grouped)
         vertical_diffusion,
         numerics = get_numerics(parsed_args, FT),
