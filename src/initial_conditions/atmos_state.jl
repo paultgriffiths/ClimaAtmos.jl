@@ -70,7 +70,10 @@ grid_scale_center_variables(ls, atmos_model) = (;
 chemistry_variables(ls, ::NoChemistry) = (;)
 chemistry_variables(ls, ::IdealizedChemistry) = (;
     ρch4 = ls.ρ * eltype(ls.ρ)(1e-9),
-    ρoh = ls.ρ * eltype(ls.ρ)(1e-12),
+    ρoh  = ls.ρ * eltype(ls.ρ)(1e-12),
+)
+chemistry_variables(ls, ::TroposphericChemistry) = (;
+    ρco = ls.ρ * eltype(ls.ρ)(1e-7),  # ~100 ppb CO, typical global-mean background
 )
 
 energy_variables(ls) = (;

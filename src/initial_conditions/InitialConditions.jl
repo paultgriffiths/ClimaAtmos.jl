@@ -4,6 +4,7 @@ import ..AtmosModel
 import ..AbstractChemistryModel
 import ..NoChemistry
 import ..IdealizedChemistry
+import ..TroposphericChemistry
 import ..AbstractMicrophysicsModel
 import ..DryModel
 import ..EquilibriumMicrophysics0M

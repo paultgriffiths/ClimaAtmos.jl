@@ -334,6 +334,33 @@ where `ρχ` is the density-weighted tracer mixing ratio.
 """
 struct IdealizedChemistry <: AbstractChemistryModel end
 
+"""
+    TroposphericChemistry(; oh_noon = 5e5, co_emission = 1e-10) <: AbstractChemistryModel
+
+Simple tropospheric CO chemistry with a prescribed diurnal OH cycle.
+
+One prognostic tracer `ρco` (CO) is:
+- emitted uniformly at the surface at rate `co_emission` (kg m⁻² s⁻¹)
+- consumed by reaction with OH: CO + OH → CO₂ + H
+
+OH is prescribed (not prognostic):
+
+    [OH](t, φ) = oh_noon × max(0, cos(φ) × cos(h(t)))
+
+where φ is latitude and h(t) = 2πt/T_day − π is the solar hour angle (h=0 at noon).
+
+# Parameters
+- `oh_noon::Float64 = 5e5`: peak OH at noon equator [molecules cm⁻³].
+  Physical range ≈ 1e5–1e7. Increase for faster decay in demonstrations.
+  τ_noon = 1 / (k_CO × oh_noon), where k_CO = 2.4×10⁻¹³ cm³ molec⁻¹ s⁻¹.
+  Default (5e5): τ ≈ 97 days.  Demo (5e7): τ ≈ 23 hours.
+- `co_emission::Float64 = 1e-10`: uniform surface CO flux [kg m⁻² s⁻¹].
+"""
+Base.@kwdef struct TroposphericChemistry <: AbstractChemistryModel
+    oh_noon::Float64     = 5e5    # molecules cm⁻³
+    co_emission::Float64 = 1e-10  # kg m⁻² s⁻¹
+end
+
 ### ------------- ###
 ### Sponge models ###
 ### ------------- ###
