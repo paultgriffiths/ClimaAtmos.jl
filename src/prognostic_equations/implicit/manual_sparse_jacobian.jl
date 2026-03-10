@@ -106,8 +106,13 @@ function jacobian_cache(alg::ManualSparseJacobian, Y, atmos)
     )
     available_condensate_names =
         MatrixFields.unrolled_filter(is_in_Y, condensate_names)
+    chemistry_tracer_names = (
+        @name(c.ρch4),
+        @name(c.ρoh),
+    )
+    available_chemistry_names = MatrixFields.unrolled_filter(is_in_Y, chemistry_tracer_names)
     available_tracer_names =
-        (ρq_tot_if_available..., available_condensate_names...)
+        (ρq_tot_if_available..., available_condensate_names..., available_chemistry_names...)
 
     # we define the list of condensate masses separately because ρa and q_tot
     # depend on the masses via sedimentation

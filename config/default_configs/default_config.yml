@@ -382,6 +382,9 @@ time_varying_trace_gases:
 turbconv:
   help: "Turbulence convection scheme [`nothing` (default), 'prognostic_edmfx', 'diagnostic_edmfx']"
   value: ~
+chemistry:
+  help: "Chemistry scheme [`false` (default), `true`]"
+  value: false
 advection_test:
   help: "Switches off all grid-scale and subgrid-scale momentum tendencies [`false` (default), `true`]"
   value: false

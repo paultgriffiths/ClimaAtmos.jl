@@ -64,6 +64,13 @@ grid_scale_center_variables(ls, atmos_model) = (;
     energy_variables(ls)...,
     moisture_variables(ls, atmos_model.microphysics_model)...,
     precip_variables(ls, atmos_model.microphysics_model)...,
+    chemistry_variables(ls, atmos_model.chemistry.chemistry_model)...,
+)
+
+chemistry_variables(ls, ::NoChemistry) = (;)
+chemistry_variables(ls, ::IdealizedChemistry) = (;
+    ρch4 = ls.ρ * eltype(ls.ρ)(1e-9),
+    ρoh = ls.ρ * eltype(ls.ρ)(1e-12),
 )
 
 energy_variables(ls) = (;

@@ -1,0 +1,10 @@
+initial_condition: "DryBaroclinicWave"
+t_end: "1days"
+disable_surface_flux_tendency: true
+chemistry: true
+diagnostics:
+  - short_name: [pfull, ua, wa, va, ta]
+    period: 6hours
+  - short_name: [mmrch4, mmroh]
+    period: 1hours
+split_ode: false

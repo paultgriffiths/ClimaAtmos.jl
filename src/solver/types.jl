@@ -310,6 +310,30 @@ end
     D::FT
 end
 
+abstract type AbstractChemistryModel end
+
+"""
+    NoChemistry <: AbstractChemistryModel
+
+No atmospheric chemistry. All chemistry tendency functions are no-ops.
+"""
+struct NoChemistry <: AbstractChemistryModel end
+
+"""
+    IdealizedChemistry <: AbstractChemistryModel
+
+A simple idealized chemistry model with a single tracer that undergoes
+first-order exponential decay with a prescribed lifetime `τ_chem` (in seconds).
+
+This is useful for testing the chemistry infrastructure without coupling to
+a full chemical mechanism. The tendency applied is:
+
+    dρχ/dt = -ρχ / τ_chem
+
+where `ρχ` is the density-weighted tracer mixing ratio.
+"""
+struct IdealizedChemistry <: AbstractChemistryModel end
+
 ### ------------- ###
 ### Sponge models ###
 ### ------------- ###
@@ -930,7 +954,17 @@ Groups surface-related models and types.
     surface_albedo::SA = ConstantAlbedo{Float32}(; α = 0.07)
 end
 
+"""
+    AtmosChemistry
+
+Groups chemistry-related models and types.
+"""
+@kwdef struct AtmosChemistry{C}
+    chemistry_model::C = NoChemistry()
+end
+
 # Add broadcastable for the new grouped types
+Base.broadcastable(x::AtmosChemistry) = tuple(x)
 Base.broadcastable(x::SCMSetup) = tuple(x)
 Base.broadcastable(x::AtmosWater) = tuple(x)
 Base.broadcastable(x::AtmosRadiation) = tuple(x)
@@ -939,7 +973,7 @@ Base.broadcastable(x::AtmosGravityWave) = tuple(x)
 Base.broadcastable(x::AtmosSponge) = tuple(x)
 Base.broadcastable(x::AtmosSurface) = tuple(x)
 
-struct AtmosModel{W, SCM, R, TC, PF, GW, VD, SP, SU, NU}
+struct AtmosModel{W, SCM, R, TC, PF, GW, VD, SP, SU, NU, CH}
     water::W
     scm_setup::SCM
     radiation::R
@@ -950,6 +984,7 @@ struct AtmosModel{W, SCM, R, TC, PF, GW, VD, SP, SU, NU}
     sponge::SP
     surface::SU
     numerics::NU
+    chemistry::CH
 
     """Whether to apply surface flux tendency (independent of surface conditions)"""
     disable_surface_flux_tendency::Bool
@@ -965,6 +1000,7 @@ const ATMOS_MODEL_GROUPS = (
     (AtmosSponge, :sponge),
     (AtmosSurface, :surface),
     (AtmosNumerics, :numerics),
+    (AtmosChemistry, :chemistry),
     (SCMSetup, :scm_setup),
 )
 
@@ -1114,9 +1150,10 @@ Internal testing and calibration components for single-column setups:
 - `diff_mode`: Explicit(), Implicit() timestepping mode for diffusion
 - `hyperdiff`: nothing or Hyperdiffusion()
 
-## Top-level Options
+    ## Top-level Options
 - `vertical_diffusion`: nothing, VerticalDiffusion(), DecayWithHeightDiffusion()
 - `disable_surface_flux_tendency`: Bool
+- `chemistry`: no chemistry
 """
 function AtmosModel(; kwargs...)
     group_kwargs, atmos_model_kwargs = _partition_atmos_model_kwargs(kwargs)
@@ -1140,6 +1177,8 @@ function AtmosModel(; kwargs...)
         _create_grouped_struct(AtmosSurface, atmos_model_kwargs, group_kwargs)
     numerics =
         _create_grouped_struct(AtmosNumerics, atmos_model_kwargs, group_kwargs)
+    chemistry =
+        _create_grouped_struct(AtmosChemistry, atmos_model_kwargs, group_kwargs)
 
     vertical_diffusion = get(atmos_model_kwargs, :vertical_diffusion, nothing)
     disable_surface_flux_tendency =
@@ -1158,6 +1197,7 @@ function AtmosModel(; kwargs...)
         typeof(sponge),
         typeof(surface),
         typeof(numerics),
+        typeof(chemistry),
     }(
         water,
         scm_setup,
@@ -1169,6 +1209,7 @@ function AtmosModel(; kwargs...)
         sponge,
         surface,
         numerics,
+        chemistry,
         disable_surface_flux_tendency,
     )
 end

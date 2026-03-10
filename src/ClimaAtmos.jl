@@ -106,6 +106,7 @@ include(joinpath("prognostic_equations", "edmfx_tke.jl"))
 include(joinpath("prognostic_equations", "edmfx_sgs_flux.jl"))
 include(joinpath("prognostic_equations", "edmfx_boundary_condition.jl"))
 include(joinpath("prognostic_equations", "edmfx_microphysics.jl"))
+include(joinpath("parameterized_tendencies", "chemistry.jl"))
 include(
     joinpath("prognostic_equations", "vertical_diffusion_boundary_layer.jl"),
 )

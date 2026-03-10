@@ -249,3 +249,49 @@ add_diagnostic_variable!(
     comments = "The total dry mass of sea salt aerosol particles per unit area.",
     compute! = (out, u, p, t) -> compute_sea_salt_column!(out, u, p, t),
 )
+
+###
+# CH4 mass mixing ratio (3d)
+###
+compute_mmrch4!(out, state, cache, time) =
+    compute_mmrch4!(out, state, cache, time, cache.atmos.chemistry.chemistry_model)
+compute_mmrch4!(_, _, _, _, model) =
+    error_diagnostic_variable("mmrch4", model)
+function compute_mmrch4!(out, state, _, _, ::IdealizedChemistry)
+    if isnothing(out)
+        return state.c.ρch4 ./ state.c.ρ
+    else
+        out .= state.c.ρch4 ./ state.c.ρ
+    end
+end
+
+add_diagnostic_variable!(
+    short_name = "mmrch4",
+    long_name = "Methane Mass Mixing Ratio",
+    units = "kg kg^-1",
+    comments = "Mass mixing ratio of CH4 (ρch4 / ρ).",
+    compute! = compute_mmrch4!,
+)
+
+###
+# OH mass mixing ratio (3d)
+###
+compute_mmroh!(out, state, cache, time) =
+    compute_mmroh!(out, state, cache, time, cache.atmos.chemistry.chemistry_model)
+compute_mmroh!(_, _, _, _, model) =
+    error_diagnostic_variable("mmroh", model)
+function compute_mmroh!(out, state, _, _, ::IdealizedChemistry)
+    if isnothing(out)
+        return state.c.ρoh ./ state.c.ρ
+    else
+        out .= state.c.ρoh ./ state.c.ρ
+    end
+end
+
+add_diagnostic_variable!(
+    short_name = "mmroh",
+    long_name = "Hydroxyl Radical Mass Mixing Ratio",
+    units = "kg kg^-1",
+    comments = "Mass mixing ratio of OH (ρoh / ρ).",
+    compute! = compute_mmroh!,
+)

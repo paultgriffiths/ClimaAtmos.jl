@@ -1,6 +1,9 @@
 module InitialConditions
 
 import ..AtmosModel
+import ..AbstractChemistryModel
+import ..NoChemistry
+import ..IdealizedChemistry
 import ..AbstractMicrophysicsModel
 import ..DryModel
 import ..EquilibriumMicrophysics0M
