@@ -1,10 +1,14 @@
 initial_condition: "DryBaroclinicWave"
-t_end: "1days"
+t_end: "5days"
 disable_surface_flux_tendency: true
-chemistry: true
+chemistry: "tropospheric"
+# Elevated oh_noon for demonstration: τ_noon ≈ 23 h (vs 97 days physical default).
+# This makes the equatorial CO decay clearly visible over the 5-day run.
+chemistry_oh_noon: 5.0e7
+chemistry_co_emission: 1.0e-10
 diagnostics:
   - short_name: [pfull, ua, wa, va, ta]
     period: 6hours
-  - short_name: [mmrch4, mmroh]
-    period: 1hours
+  - short_name: [mmrco]
+    period: 3hours
 split_ode: false

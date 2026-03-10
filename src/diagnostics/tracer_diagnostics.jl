@@ -295,3 +295,26 @@ add_diagnostic_variable!(
     comments = "Mass mixing ratio of OH (ρoh / ρ).",
     compute! = compute_mmroh!,
 )
+
+###
+# CO mass mixing ratio (3d)
+###
+compute_mmrco!(out, state, cache, time) =
+    compute_mmrco!(out, state, cache, time, cache.atmos.chemistry.chemistry_model)
+compute_mmrco!(_, _, _, _, model) =
+    error_diagnostic_variable("mmrco", model)
+function compute_mmrco!(out, state, _, _, ::TroposphericChemistry)
+    if isnothing(out)
+        return state.c.ρco ./ state.c.ρ
+    else
+        out .= state.c.ρco ./ state.c.ρ
+    end
+end
+
+add_diagnostic_variable!(
+    short_name = "mmrco",
+    long_name = "Carbon Monoxide Mass Mixing Ratio",
+    units = "kg kg^-1",
+    comments = "Mass mixing ratio of CO (ρco / ρ).",
+    compute! = compute_mmrco!,
+)

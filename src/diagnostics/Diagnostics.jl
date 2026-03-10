@@ -56,6 +56,7 @@ import ..SlabOceanSST
 # chemistry_model
 import ..NoChemistry
 import ..IdealizedChemistry
+import ..TroposphericChemistry
 
 # functions used to calculate diagnostics
 import ..draft_area

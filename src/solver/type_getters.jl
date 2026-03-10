@@ -184,7 +184,20 @@ function get_atmos(config::AtmosConfig, params)
         surface_albedo = get_surface_albedo_model(parsed_args, params, FT),
 
         # AtmosChemistry
-        chemistry_model = parsed_args["chemistry"] ? IdealizedChemistry() : NoChemistry(),
+        chemistry_model = let chem = parsed_args["chemistry"]
+            if chem == false
+                NoChemistry()
+            elseif chem == true || chem == "idealized"
+                IdealizedChemistry()
+            elseif chem == "tropospheric"
+                TroposphericChemistry(;
+                    oh_noon     = parsed_args["chemistry_oh_noon"],
+                    co_emission = parsed_args["chemistry_co_emission"],
+                )
+            else
+                error("chemistry must be false, true, \"idealized\", or \"tropospheric\", got $chem")
+            end
+        end,
 
         # Top-level options (not grouped)
         vertical_diffusion,
