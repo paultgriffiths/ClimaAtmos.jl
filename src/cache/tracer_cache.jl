@@ -55,7 +55,38 @@ function co2_cache(Y, start_date)
     return (; co2, prescribed_co2_timevaryinginput)
 end
 
-function tracer_cache(Y, prescribed_aerosol_names, time_varying_trace_gases, start_date)
+"""
+    oh_cache(Y, model, start_date)
+
+Allocate a prescribed OH field for `TroposphericChemistry`.
+
+If `model.oh_lut_path` is non-empty the field is populated from a NetCDF
+climatology via `ClimaUtilities.TimeVaryingInputs`; an empty path yields a
+uniform fallback of 1×10⁶ molecules cm⁻³. Dispatches to a no-op for all
+other chemistry models.
+"""
+function oh_cache(Y, model::TroposphericChemistry, start_date)
+    oh_prescribed = similar(Y.c.ρ)
+    if isempty(model.oh_lut_path)
+        fill!(oh_prescribed, eltype(oh_prescribed)(1e6))
+        return (; oh_prescribed)
+    else
+        extrapolation_bc = (Intp.Periodic(), Intp.Flat(), Intp.Flat())
+        prescribed_oh_timevaryinginput = TimeVaryingInput(
+            model.oh_lut_path,
+            "OH",
+            axes(oh_prescribed);
+            reference_date = start_date,
+            regridder_type = :InterpolationsRegridder,
+            regridder_kwargs = (; extrapolation_bc),
+            method = LinearInterpolation(),
+        )
+        return (; oh_prescribed, prescribed_oh_timevaryinginput)
+    end
+end
+oh_cache(_, ::AbstractChemistryModel, _) = (;)
+
+function tracer_cache(Y, prescribed_aerosol_names, time_varying_trace_gases, start_date, chemistry_model = NoChemistry())
     if !isempty(prescribed_aerosol_names)
         target_space = axes(Y.c)
 
@@ -115,5 +146,7 @@ function tracer_cache(Y, prescribed_aerosol_names, time_varying_trace_gases, sta
         co2_cache_nt = (;)
     end
 
-    return (; aerosol_cache..., o3_cache..., co2_cache_nt...)
+    oh_cache_nt = oh_cache(Y, chemistry_model, start_date)
+
+    return (; aerosol_cache..., o3_cache..., co2_cache_nt..., oh_cache_nt...)
 end

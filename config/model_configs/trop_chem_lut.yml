@@ -1,0 +1,30 @@
+## Tropospheric chemistry test: CO decay driven by prescribed 3-D OH climatology
+##
+## Atmosphere is isothermal and stationary (no baroclinic waves, no dynamics).
+## CO starts uniform everywhere; the spatial structure that emerges reflects the
+## OH loss field from the GEOS-Chem climatology (lat/lon/altitude variation).
+##
+## Run time: ~10 days is enough to see ~15-20% tropical decay with physical OH.
+## For a more dramatic demo, shorten t_end or rescale OH in the LUT.
+##
+## Set chemistry_oh_lut_path to the preprocessed file produced by preprocess_oh_lut.jl
+
+initial_condition: "IsothermalProfile"
+start_date: "19850101"           # matches GEOS-Chem OH climatology reference date
+t_end: "10days"
+dt: "600secs"
+
+chemistry: "tropospheric"
+chemistry_oh_lut_path: "/Users/ptg21/dev-local/ClimaAtmos.jl-ptg/OH_3Dglobal.geos5.47L.4x5_climaatmos.nc"
+chemistry_co_emission: 0.0       # no surface emission — clean decay signal
+
+disable_surface_flux_tendency: true
+advection_test: true             # suppress all momentum tendencies; pure chemistry
+
+diagnostics:
+  - short_name: [mmrco]
+    period: 6hours
+  - short_name: [pfull, ta]
+    period: 1days
+
+split_ode: false

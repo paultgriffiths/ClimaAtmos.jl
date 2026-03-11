@@ -383,11 +383,11 @@ turbconv:
   help: "Turbulence convection scheme [`nothing` (default), 'prognostic_edmfx', 'diagnostic_edmfx']"
   value: ~
 chemistry:
-  help: "Chemistry scheme [`false` (default), `true`/`\"idealized\"` (ρch4+ρoh decay), `\"tropospheric\"` (CO+OH diurnal)]"
+  help: "Chemistry scheme [`false` (default), `true`/`\"idealized\"` (ρch4+ρoh decay), `\"tropospheric\"` (CO+prescribed-OH LUT)]"
   value: false
-chemistry_oh_noon:
-  help: "Peak OH concentration at noon equator for TroposphericChemistry [molecules cm⁻³]. Default 5e5 gives τ≈97 days; 5e7 gives τ≈23 hours for demonstrations."
-  value: 5.0e5
+chemistry_oh_lut_path:
+  help: "Path to NetCDF OH climatology for TroposphericChemistry (variable 'OH', units molecules cm⁻³). Empty string uses uniform fallback of 1e6 molecules cm⁻³."
+  value: ""
 chemistry_co_emission:
   help: "Uniform surface CO emission flux for TroposphericChemistry [kg m⁻² s⁻¹]."
   value: 1.0e-10
