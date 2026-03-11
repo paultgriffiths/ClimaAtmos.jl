@@ -73,7 +73,9 @@ chemistry_variables(ls, ::IdealizedChemistry) = (;
     ρoh  = ls.ρ * eltype(ls.ρ)(1e-12),
 )
 chemistry_variables(ls, ::TroposphericChemistry) = (;
-    ρco = ls.ρ * eltype(ls.ρ)(1e-7),  # ~100 ppb CO, typical global-mean background
+    ρco    = ls.ρ * eltype(ls.ρ)(0),  # starts at 0; builds from CEDS surface emissions
+    ρso2   = ls.ρ * eltype(ls.ρ)(0),  # starts at 0; builds from CEDS surface emissions
+    ρh2so4 = ls.ρ * eltype(ls.ρ)(0),  # starts at 0; accumulates via SO2 + OH → H2SO4
 )
 
 energy_variables(ls) = (;

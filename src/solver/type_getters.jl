@@ -191,9 +191,10 @@ function get_atmos(config::AtmosConfig, params)
                 IdealizedChemistry()
             elseif chem == "tropospheric"
                 TroposphericChemistry(;
-                    oh_lut_path      = parsed_args["chemistry_oh_lut_path"],
-                    co_emission      = parsed_args["chemistry_co_emission"],
-                    co_emission_path = parsed_args["chemistry_co_emission_path"],
+                    oh_lut_path       = parsed_args["chemistry_oh_lut_path"],
+                    co_emission       = parsed_args["chemistry_co_emission"],
+                    co_emission_path  = parsed_args["chemistry_co_emission_path"],
+                    so2_emission_path = parsed_args["chemistry_so2_emission_path"],
                 )
             else
                 error("chemistry must be false, true, \"idealized\", or \"tropospheric\", got $chem")

@@ -98,7 +98,10 @@ fallback `model.co_emission` is used directly in the tendency instead.
 """
 function co_emission_cache(Y, model::TroposphericChemistry, start_date)
     isempty(model.co_emission_path) && return (;)
+    FT = Spaces.undertype(axes(Y.c))
     co_emission_prescribed = similar(Fields.level(Y.c.ρ, 1))  # 2-D horizontal field
+    co_emission_C3_sfc = similar(co_emission_prescribed, C3{FT})  # C3 version for DivergenceF2C
+    fill!(co_emission_C3_sfc, C3(zero(FT)))
     extrapolation_bc = (Intp.Periodic(), Intp.Flat())          # lon periodic, lat flat
     prescribed_co_emission_timevaryinginput = TimeVaryingInput(
         model.co_emission_path,
@@ -109,9 +112,38 @@ function co_emission_cache(Y, model::TroposphericChemistry, start_date)
         regridder_kwargs = (; extrapolation_bc),
         method = LinearInterpolation(),
     )
-    return (; co_emission_prescribed, prescribed_co_emission_timevaryinginput)
+    return (; co_emission_prescribed, co_emission_C3_sfc, prescribed_co_emission_timevaryinginput)
 end
 co_emission_cache(_, ::AbstractChemistryModel, _) = (;)
+
+"""
+    so2_emission_cache(Y, model, start_date)
+
+Allocate a prescribed 2-D surface SO2 emission field for `TroposphericChemistry`.
+
+If `model.so2_emission_path` is non-empty the field is populated from a NetCDF
+file (variable `"SO2_total"`, dims lon × lat [× time], units kg m⁻² s⁻¹) via
+`ClimaUtilities.TimeVaryingInputs`. An empty path yields a no-op — no SO2 emission.
+"""
+function so2_emission_cache(Y, model::TroposphericChemistry, start_date)
+    isempty(model.so2_emission_path) && return (;)
+    FT = Spaces.undertype(axes(Y.c))
+    so2_emission_prescribed = similar(Fields.level(Y.c.ρ, 1))  # 2-D horizontal field
+    so2_emission_C3_sfc = similar(so2_emission_prescribed, C3{FT})  # C3 version for DivergenceF2C
+    fill!(so2_emission_C3_sfc, C3(zero(FT)))
+    extrapolation_bc = (Intp.Periodic(), Intp.Flat())
+    prescribed_so2_emission_timevaryinginput = TimeVaryingInput(
+        model.so2_emission_path,
+        "SO2_total",
+        axes(so2_emission_prescribed);
+        reference_date = start_date,
+        regridder_type = :InterpolationsRegridder,
+        regridder_kwargs = (; extrapolation_bc),
+        method = LinearInterpolation(),
+    )
+    return (; so2_emission_prescribed, so2_emission_C3_sfc, prescribed_so2_emission_timevaryinginput)
+end
+so2_emission_cache(_, ::AbstractChemistryModel, _) = (;)
 
 function tracer_cache(Y, prescribed_aerosol_names, time_varying_trace_gases, start_date, chemistry_model = NoChemistry())
     if !isempty(prescribed_aerosol_names)
@@ -173,8 +205,9 @@ function tracer_cache(Y, prescribed_aerosol_names, time_varying_trace_gases, sta
         co2_cache_nt = (;)
     end
 
-    oh_cache_nt          = oh_cache(Y, chemistry_model, start_date)
-    co_emission_cache_nt = co_emission_cache(Y, chemistry_model, start_date)
+    oh_cache_nt           = oh_cache(Y, chemistry_model, start_date)
+    co_emission_cache_nt  = co_emission_cache(Y, chemistry_model, start_date)
+    so2_emission_cache_nt = so2_emission_cache(Y, chemistry_model, start_date)
 
-    return (; aerosol_cache..., o3_cache..., co2_cache_nt..., oh_cache_nt..., co_emission_cache_nt...)
+    return (; aerosol_cache..., o3_cache..., co2_cache_nt..., oh_cache_nt..., co_emission_cache_nt..., so2_emission_cache_nt...)
 end

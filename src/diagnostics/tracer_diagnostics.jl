@@ -318,3 +318,49 @@ add_diagnostic_variable!(
     comments = "Mass mixing ratio of CO (ρco / ρ).",
     compute! = compute_mmrco!,
 )
+
+###
+# SO2 mass mixing ratio (3d)
+###
+compute_mmrso2!(out, state, cache, time) =
+    compute_mmrso2!(out, state, cache, time, cache.atmos.chemistry.chemistry_model)
+compute_mmrso2!(_, _, _, _, model) =
+    error_diagnostic_variable("mmrso2", model)
+function compute_mmrso2!(out, state, _, _, ::TroposphericChemistry)
+    if isnothing(out)
+        return state.c.ρso2 ./ state.c.ρ
+    else
+        out .= state.c.ρso2 ./ state.c.ρ
+    end
+end
+
+add_diagnostic_variable!(
+    short_name = "mmrso2",
+    long_name = "Sulfur Dioxide Mass Mixing Ratio",
+    units = "kg kg^-1",
+    comments = "Mass mixing ratio of SO2 (ρso2 / ρ).",
+    compute! = compute_mmrso2!,
+)
+
+###
+# H2SO4 mass mixing ratio (3d)
+###
+compute_mmrh2so4!(out, state, cache, time) =
+    compute_mmrh2so4!(out, state, cache, time, cache.atmos.chemistry.chemistry_model)
+compute_mmrh2so4!(_, _, _, _, model) =
+    error_diagnostic_variable("mmrh2so4", model)
+function compute_mmrh2so4!(out, state, _, _, ::TroposphericChemistry)
+    if isnothing(out)
+        return state.c.ρh2so4 ./ state.c.ρ
+    else
+        out .= state.c.ρh2so4 ./ state.c.ρ
+    end
+end
+
+add_diagnostic_variable!(
+    short_name = "mmrh2so4",
+    long_name = "Sulfuric Acid Mass Mixing Ratio",
+    units = "kg kg^-1",
+    comments = "Mass mixing ratio of H2SO4 (ρh2so4 / ρ), produced by SO2 + OH oxidation.",
+    compute! = compute_mmrh2so4!,
+)

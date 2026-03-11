@@ -11,19 +11,20 @@
 
 initial_condition: "IsothermalProfile"
 start_date: "19850101"           # matches GEOS-Chem OH climatology reference date
-t_end: "10days"
+t_end: "30days"
 dt: "600secs"
 
 chemistry: "tropospheric"
 chemistry_oh_lut_path: "/Users/ptg21/dev-local/ClimaAtmos.jl/OH_3Dglobal.geos5.47L.4x5_climaatmos.nc"
-chemistry_co_emission: 0.0       # fallback uniform flux (unused when co_emission_path is set)
+chemistry_co_emission: 0.0
 chemistry_co_emission_path: "/Users/ptg21/dev-local/ClimaAtmos.jl/CO-em-anthro_CMIP_CEDS_2020_climaatmos.nc"
+chemistry_so2_emission_path: "/Users/ptg21/dev-local/ClimaAtmos.jl/SO2-em-anthro_CMIP_CEDS_2020_climaatmos.nc"
 
 disable_surface_flux_tendency: true
 advection_test: true             # suppress all momentum tendencies; pure chemistry
 
 diagnostics:
-  - short_name: [mmrco]
+  - short_name: [mmrco, mmrso2, mmrh2so4]
     period: 6hours
   - short_name: [pfull, ta]
     period: 1days

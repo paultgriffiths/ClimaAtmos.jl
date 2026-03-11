@@ -4,17 +4,17 @@ plot_co_decay.jl
 ================
 Produces eight figures from a TroposphericChemistry / OH-LUT run:
 
-  Figure 1 — Global-mean CO vs time (log scale).
-              Confirms chemistry is working: exponential decay with the
-              characteristic timescale set by the OH climatology.
+  Figure 1 — Global-mean CO vs time (linear scale).
+              Confirms emissions are working: monotonic build-up from zero
+              (rate limited by OH chemical loss).
 
-  Figure 2 — Hovmöller: zonal-mean surface-layer CO fraction vs latitude × time.
-              Shows faster tropical decay (high OH) vs slow polar decay (low OH).
+  Figure 2 — Hovmöller: zonal-mean surface-layer CO vs latitude × time.
+              Shows spatial structure of the build-up; OH loss moderates tropics.
 
-  Figure 3 — Surface CO map at t=0 and t=end (lon × lat heatmap with coastlines).
+  Figure 3 — Surface CO map at t≈25% and t=end (lon × lat heatmap with coastlines).
 
-  Figure 4 — CO(t=end)/CO(t=0) ratio map — same size and layout as Figure 6.
-              The spatial imprint of the OH LUT is directly visible.
+  Figure 4 — Surface CO at t=end — same size and layout as Figure 6 (OH map)
+              for direct source/sink/result comparison.
 
   Figure 5 — Vertical profile: equatorial vs polar CO fraction at t=end.
               Shows how OH decreases above the tropopause, slowing decay aloft.
@@ -42,7 +42,7 @@ using NaturalEarth
 using Statistics: mean
 
 # ── locate output ────────────────────────────────────────────────────────────
-outdir  = length(ARGS) > 0 ? ARGS[1] : "output/trop_chem_lut_test/output_0001"
+outdir  = length(ARGS) > 0 ? ARGS[1] : "output/trop_chem_lut_test/output_0007"
 ncfile  = joinpath(outdir, "mmrco_6h_inst.nc")
 isfile(ncfile) || error("File not found: $ncfile")
 
@@ -67,48 +67,41 @@ co0   = mmrco[1, :, :, :]   # initial field (lon, lat, z)
 co_t0 = mmrco[1,  :, :, 1]  # surface at t=0 (lon, lat)
 co_tf = mmrco[end,:, :, 1]  # surface at t=end
 
-# ── Figure 1: Global-mean CO vs time (log scale) ─────────────────────────────
-# Domain mean over all levels and columns
+# ── Figure 1: Global-mean CO vs time ─────────────────────────────────────────
+# Domain mean over all levels and columns.
+# CO starts at zero and spins up from emissions, so use linear y-axis.
 co_mean = [mean(mmrco[t, :, :, :]) for t in axes(mmrco, 1)]   # (time,)
 
 fig1 = Figure(size = (700, 420))
 ax1  = Axis(fig1[1,1];
     xlabel  = "Time [days]",
     ylabel  = "Global-mean CO mass mixing ratio [kg/kg]",
-    title   = "CO decay driven by 3-D OH climatology (GEOS-Chem)",
-    yscale  = log10,
+    title   = "CO spin-up driven by CEDS emissions + OH loss (GEOS-Chem)",
 )
 lines!(ax1, t_days, co_mean; color = :firebrick, linewidth = 2)
 scatter!(ax1, t_days, co_mean; color = :firebrick, markersize = 5)
 
-# Overlay a reference exponential fit through the first and last point
-τ_fit  = -t_days[end] * 86400 / log(co_mean[end] / co_mean[1])  # seconds
-t_ref  = LinRange(t_days[1], t_days[end], 200)
-co_ref = co_mean[1] .* exp.(-t_ref .* 86400 ./ τ_fit)
-lines!(ax1, t_ref, co_ref; color = :gray, linestyle = :dash,
-       label = "Exponential fit  τ ≈ $(round(τ_fit/86400, digits=1)) days")
-axislegend(ax1; position = :rt)
-
 save("co_global_mean.png", fig1)
-println("Saved co_global_mean.png  (τ_fit ≈ $(round(τ_fit/86400, digits=1)) days)")
+println("Saved co_global_mean.png")
 
 # ── Figure 2: Hovmöller ───────────────────────────────────────────────────────
-# Zonal-mean surface CO normalised by initial value
+# Zonal-mean surface CO (absolute) vs latitude × time.
+# CO starts at zero; slower polar build-up relative to tropics reflects
+# lower OH (less removal) vs. lower emissions at high latitudes.
 surface_zmean = dropdims(mean(mmrco[:, :, :, 1]; dims=2); dims=2)  # (time, lat)
-co0_zmean     = surface_zmean[1, :]                                 # (lat,)
-frac_hovmoller = surface_zmean ./ co0_zmean'                        # (time, lat)
+co_hov_max    = max(Float64(maximum(surface_zmean)), 1e-20)
 
 fig2 = Figure(size = (800, 460))
 ax2  = Axis(fig2[1,1];
     xlabel = "Latitude [°]",
     ylabel = "Time [days]",
-    title  = "Zonal-mean surface CO / CO₀  (faster tropical decay from high OH)",
+    title  = "Zonal-mean surface CO [kg/kg]  (spin-up from zero; CEDS emissions + OH loss)",
 )
-hm2 = heatmap!(ax2, lat, t_days, frac_hovmoller';
+hm2 = heatmap!(ax2, lat, t_days, surface_zmean';
     colormap   = :plasma,
-    colorrange = (0.0, 1.0),
+    colorrange = (0.0, co_hov_max),
 )
-Colorbar(fig2[1,2], hm2; label = "CO / CO₀")
+Colorbar(fig2[1,2], hm2; label = "CO [kg/kg]")
 save("hovmoller_co_decay.png", fig2)
 println("Saved hovmoller_co_decay.png")
 
@@ -121,23 +114,24 @@ function geo_panel!(fig, pos, data_lon, data_lat, data_z; title="", colormap=:Yl
         dest   = "+proj=longlat",
         limits = (-180, 180, -90, 90),
     )
-    hm = surface!(ax, data_lon, data_lat, data_z;
-        shading        = NoShading,
-        colormap       = colormap,
-        colorrange     = colorrange,
+    hm = heatmap!(ax, data_lon, data_lat, data_z;
+        colormap   = colormap,
+        colorrange = colorrange,
     )
     lines!(ax, coastlines; color = :black, linewidth = 0.6)
     return ax, hm
 end
 
-co_clim   = (0.0, Float64(maximum(co_t0)))
-ratio_sfc = co_tf ./ max.(co_t0, eps(Float32))
+# CO starts at zero — base colorrange on the final-time field.
+co_clim = (0.0, max(Float64(maximum(co_tf)), 1e-20))
 
-# Figure 3: t=0 and t=end side by side
+# Figure 3: early time and t=end side by side.
+# Use the same colorscale (max at t=end) for both panels so the build-up is visible.
+co_t_early = mmrco[max(1, size(mmrco,1)÷4), :, :, 1]   # ~25% through run
 fig3 = Figure(size = (1000, 420))
 
-ax3a, hm3a = geo_panel!(fig3, (1,1), lon, lat, co_t0;
-    title      = "Surface CO [kg/kg]  t = $(round(t_days[1],   digits=1)) days",
+ax3a, hm3a = geo_panel!(fig3, (1,1), lon, lat, co_t_early;
+    title      = "Surface CO [kg/kg]  t ≈ $(round(t_days[max(1,end÷4)], digits=1)) days",
     colormap   = :YlOrRd_9,
     colorrange = co_clim)
 
@@ -151,20 +145,21 @@ Colorbar(fig3[1,2], hm3a; label = "CO [kg/kg]")
 save("surface_co_map.png", fig3)
 println("Saved surface_co_map.png")
 
-# Figure 4 (ratio): CO(t=end)/CO(t=0) — same layout as Figure 5 (OH map)
+# Figure 4: surface CO at t=end — same layout as Figure 5/6 (OH map) for comparison.
+# Since CO starts at zero the ratio CO(t=end)/CO(t=0) is undefined; instead
+# show the absolute final CO field to compare directly with the OH and emission maps.
 fig_ratio = Figure(size = (1000, 500))
 ax_ratio  = GeoAxis(fig_ratio[1,1];
-    title  = "CO(t=end) / CO(t=0)  — imprint of OH spatial structure",
+    title  = "Surface CO at t=$(round(t_days[end], digits=0)) days [kg/kg]",
     dest   = "+proj=longlat",
     limits = (-180, 180, -90, 90),
 )
-hm_ratio = surface!(ax_ratio, lon, lat, ratio_sfc;
-    shading    = NoShading,
-    colormap   = Reverse(:viridis),
-    colorrange = (0.0, 1.0),
+hm_ratio = heatmap!(ax_ratio, lon, lat, co_tf;
+    colormap   = :YlOrRd_9,
+    colorrange = co_clim,
 )
 lines!(ax_ratio, coastlines; color = :black, linewidth = 0.6)
-Colorbar(fig_ratio[1,2], hm_ratio; label = "CO / CO₀")
+Colorbar(fig_ratio[1,2], hm_ratio; label = "CO [kg/kg]")
 
 save("co_ratio_map.png", fig_ratio)
 println("Saved co_ratio_map.png")
@@ -185,14 +180,13 @@ co_pol_tf = profile(nt, pol_mask)
 
 fig4 = Figure(size = (600, 620))
 ax4  = Axis(fig4[1,1];
-    xlabel = "CO / CO₀",
+    xlabel = "CO mass mixing ratio [kg/kg]",
     ylabel = "Height [km]",
-    title  = "CO depletion profile at t = $(round(t_days[end], digits=1)) days\n(equatorial vs polar columns)",
+    title  = "CO vertical profile at t = $(round(t_days[end], digits=1)) days\n(equatorial vs polar columns)",
 )
-lines!(ax4, co_eq_tf  ./ co_eq_t0,  z_km; color = :firebrick,  linewidth = 2, label = "Equatorial (|φ|<10°)")
-lines!(ax4, co_pol_tf ./ co_pol_t0, z_km; color = :steelblue,  linewidth = 2, label = "Polar (|φ|>70°)")
-vlines!(ax4, [1.0]; color = :gray, linestyle = :dash, label = "No change")
-axislegend(ax4; position = :lb)
+lines!(ax4, co_eq_tf,  z_km; color = :firebrick,  linewidth = 2, label = "Equatorial (|φ|<10°)")
+lines!(ax4, co_pol_tf, z_km; color = :steelblue,  linewidth = 2, label = "Polar (|φ|>70°)")
+axislegend(ax4; position = :rb)
 
 save("vertical_profile_co.png", fig4)
 println("Saved vertical_profile_co.png")
@@ -223,8 +217,7 @@ ax5  = GeoAxis(fig5[1,1];
     dest   = "+proj=longlat",
     limits = (-180, 180, -90, 90),
 )
-hm5 = surface!(ax5, oh_lon, oh_lat, oh_sfc_jan;
-    shading    = NoShading,
+hm5 = heatmap!(ax5, oh_lon, oh_lat, oh_sfc_jan;
     colormap   = :viridis,
     colorrange = (0.0, Float64(maximum(oh_sfc_jan))),
 )
@@ -261,8 +254,7 @@ ax7  = GeoAxis(fig7[1,1];
     dest   = "+proj=longlat",
     limits = (-180, 180, -90, 90),
 )
-hm7 = surface!(ax7, em_lon, em_lat, em_scaled;
-    shading    = NoShading,
+hm7 = heatmap!(ax7, em_lon, em_lat, em_scaled;
     colormap   = :YlOrBr_9,
     colorscale = log10,
     colorrange = em_clim,
@@ -286,8 +278,8 @@ ax8a = GeoAxis(fig8[1,1];
     title  = "(a) Emissions [×10⁻¹⁰ kg m⁻² s⁻¹]",
     dest   = "+proj=longlat", limits = (-180, 180, -90, 90),
 )
-hm8a = surface!(ax8a, em_lon, em_lat, em_scaled;
-    shading = NoShading, colormap = :YlOrBr_9, colorscale = log10, colorrange = em_clim)
+hm8a = heatmap!(ax8a, em_lon, em_lat, em_scaled;
+    colormap = :YlOrBr_9, colorscale = log10, colorrange = em_clim)
 lines!(ax8a, coastlines; color = :black, linewidth = 0.5)
 Colorbar(fig8[1,2], hm8a; label = "flux [×10⁻¹⁰ kg m⁻² s⁻¹]", scale = log10, height = Relative(0.85))
 
@@ -296,24 +288,156 @@ ax8b = GeoAxis(fig8[1,3];
     title  = "(b) OH [molecules cm⁻³]  (GEOS-Chem, January)",
     dest   = "+proj=longlat", limits = (-180, 180, -90, 90),
 )
-hm8b = surface!(ax8b, oh_lon, oh_lat, oh_sfc_jan;
-    shading = NoShading, colormap = :viridis,
+hm8b = heatmap!(ax8b, oh_lon, oh_lat, oh_sfc_jan;
+    colormap = :viridis,
     colorrange = (0.0, Float64(maximum(oh_sfc_jan))))
 lines!(ax8b, coastlines; color = :white, linewidth = 0.5)
 Colorbar(fig8[1,4], hm8b; label = "OH [molec cm⁻³]", height = Relative(0.85))
 
-# Panel c — CO ratio (net result)
+# Panel c — surface CO at t=end (net result of emissions + OH removal)
 ax8c = GeoAxis(fig8[1,5];
-    title  = "(c) CO(t=end) / CO(t=0)",
+    title  = "(c) Surface CO at t=$(round(t_days[end], digits=0)) days [kg/kg]",
     dest   = "+proj=longlat", limits = (-180, 180, -90, 90),
 )
-hm8c = surface!(ax8c, lon, lat, ratio_sfc;
-    shading = NoShading, colormap = Reverse(:viridis), colorrange = (0.0, 1.0))
+hm8c = heatmap!(ax8c, lon, lat, co_tf;
+    colormap = :YlOrRd_9, colorrange = co_clim)
 lines!(ax8c, coastlines; color = :black, linewidth = 0.5)
-Colorbar(fig8[1,6], hm8c; label = "CO / CO₀", height = Relative(0.85))
+Colorbar(fig8[1,6], hm8c; label = "CO [kg/kg]", height = Relative(0.85))
 
 save("co_chemistry_diagnosis.png", fig8)
 println("Saved co_chemistry_diagnosis.png")
 
+# ── SO2 and H2SO4 plots (require a simulation run with SO2 chemistry active) ──
+so2_ncfile    = joinpath(outdir, "mmrso2_6h_inst.nc")
+h2so4_ncfile  = joinpath(outdir, "mmrh2so4_6h_inst.nc")
+so2_em_path   = "SO2-em-anthro_CMIP_CEDS_2020_climaatmos.nc"
+
+if isfile(so2_ncfile) && isfile(h2so4_ncfile)
+
+    # Load SO2 and H2SO4 output
+    NCDataset(so2_ncfile) do ds
+        global mmrso2 = Array(ds["mmrso2"])   # (time, lon, lat, z)
+    end
+    NCDataset(h2so4_ncfile) do ds
+        global mmrh2so4 = Array(ds["mmrh2so4"])
+    end
+
+    so2_t0  = mmrso2[1,   :, :, 1]   # surface at t=0
+    so2_tf  = mmrso2[end, :, :, 1]   # surface at t=end
+    h2so4_tf = mmrh2so4[end, :, :, 1]
+
+    # ── Figure 9: Multi-species spin-up time series ───────────────────────────
+    # Global-mean surface mixing ratio vs time for CO, SO2, H2SO4.
+    # Each species on its own axis (different magnitudes).
+    co_mean_sfc   = [mean(mmrco[t,   :, :, 1]) for t in axes(mmrco,   1)]
+    so2_mean_sfc  = [mean(mmrso2[t,  :, :, 1]) for t in axes(mmrso2,  1)]
+    h2so4_mean_sfc = [mean(mmrh2so4[t,:, :, 1]) for t in axes(mmrh2so4,1)]
+
+    # Log scale is justified — spans several orders of magnitude and H2SO4 grows
+    # much slower than CO.  Skip t=0 (all species are zero, undefined on log scale)
+    # and replace any remaining non-positive values with NaN so they don't plot.
+    nz = x -> [v > 0 ? v : NaN for v in x]
+    t_plot = t_days[2:end]
+    fig9 = Figure(size = (800, 480))
+    ax9  = Axis(fig9[1,1];
+        xlabel  = "Time [days]",
+        ylabel  = "Global-mean surface MMR [kg kg⁻¹]",
+        title   = "Spin-up from zero: CO, SO₂, H₂SO₄  (surface layer)",
+        yscale  = log10,
+    )
+    lines!(ax9, t_plot, nz(co_mean_sfc[2:end]);    color = :firebrick,  linewidth = 2, label = "CO")
+    lines!(ax9, t_plot, nz(so2_mean_sfc[2:end]);   color = :steelblue,  linewidth = 2, label = "SO₂")
+    lines!(ax9, t_plot, nz(h2so4_mean_sfc[2:end]); color = :darkorange,  linewidth = 2, label = "H₂SO₄")
+    axislegend(ax9; position = :lt)
+    save("spinup_timeseries.png", fig9)
+    println("Saved spinup_timeseries.png")
+
+    # ── Figure 10: Surface SO2 at t=0 and t=end ──────────────────────────────
+    so2_clim = (0.0, max(Float64(maximum(so2_tf)), 1e-20))
+
+    so2_t_early = mmrso2[max(1, size(mmrso2,1)÷4), :, :, 1]
+    fig10 = Figure(size = (1000, 420))
+    ax10a, hm10a = geo_panel!(fig10, (1,1), lon, lat, so2_t_early;
+        title      = "Surface SO₂ [kg kg⁻¹]  t ≈ $(round(t_days[max(1,end÷4)], digits=1)) days",
+        colormap   = :Blues_9,
+        colorrange = so2_clim)
+    ax10b, hm10b = geo_panel!(fig10, (1,3), lon, lat, so2_tf;
+        title      = "Surface SO₂ [kg kg⁻¹]  t = $(round(t_days[end], digits=1)) days",
+        colormap   = :Blues_9,
+        colorrange = so2_clim)
+    Colorbar(fig10[1,2], hm10a; label = "SO₂ [kg kg⁻¹]")
+    save("surface_so2_map.png", fig10)
+    println("Saved surface_so2_map.png")
+
+    # ── Figure 11: Surface H2SO4 at t=end ────────────────────────────────────
+    h2so4_clim = (0.0, max(Float64(maximum(h2so4_tf)), 1e-20))
+
+    fig11 = Figure(size = (1000, 500))
+    ax11 = GeoAxis(fig11[1,1];
+        title  = "Surface H₂SO₄ [kg kg⁻¹]  t = $(round(t_days[end], digits=1)) days",
+        dest   = "+proj=longlat", limits = (-180, 180, -90, 90),
+    )
+    hm11 = heatmap!(ax11, lon, lat, h2so4_tf;
+        colormap = :Purples_9, colorrange = h2so4_clim)
+    lines!(ax11, coastlines; color = :black, linewidth = 0.6)
+    Colorbar(fig11[1,2], hm11; label = "H₂SO₄ [kg kg⁻¹]")
+    save("surface_h2so4_map.png", fig11)
+    println("Saved surface_h2so4_map.png")
+
+    # ── Figure 12: SO2 chemistry diagnosis ───────────────────────────────────
+    # 3-panel: SO2 emissions | surface OH | SO2(t=end)
+    # Mirrors Figure 8 for CO.
+    so2_em_scaled = if isfile(so2_em_path)
+        local ds_so2em = NCDataset(so2_em_path)
+        local raw = Array(ds_so2em["SO2_total"])[:, :, 1] .* Float32(1f10)
+        close(ds_so2em)
+        raw
+    else
+        nothing
+    end
+
+    fig12 = Figure(size = (1600, 500))
+    Label(fig12[0, 1:6], "SO₂ chemistry: source  |  sink  |  result after $(round(t_days[end], digits=0)) days";
+        fontsize = 16, font = :bold, tellwidth = false)
+
+    if !isnothing(so2_em_scaled)
+        so2_em_clim = (0.01, Float64(maximum(so2_em_scaled)))
+        ax12a = GeoAxis(fig12[1,1];
+            title = "(a) SO₂ emissions [×10⁻¹⁰ kg m⁻² s⁻¹]",
+            dest = "+proj=longlat", limits = (-180, 180, -90, 90))
+        hm12a = heatmap!(ax12a, em_lon, em_lat, so2_em_scaled;
+            colormap = :YlOrBr_9,
+            colorscale = log10, colorrange = so2_em_clim)
+        lines!(ax12a, coastlines; color = :black, linewidth = 0.5)
+        Colorbar(fig12[1,2], hm12a; label = "flux [×10⁻¹⁰ kg m⁻² s⁻¹]",
+            scale = log10, height = Relative(0.85))
+    end
+
+    ax12b = GeoAxis(fig12[1,3];
+        title = "(b) OH [molecules cm⁻³]  (GEOS-Chem, January)",
+        dest = "+proj=longlat", limits = (-180, 180, -90, 90))
+    hm12b = heatmap!(ax12b, oh_lon, oh_lat, oh_sfc_jan;
+        colormap = :viridis,
+        colorrange = (0.0, Float64(maximum(oh_sfc_jan))))
+    lines!(ax12b, coastlines; color = :white, linewidth = 0.5)
+    Colorbar(fig12[1,4], hm12b; label = "OH [molec cm⁻³]", height = Relative(0.85))
+
+    ax12c = GeoAxis(fig12[1,5];
+        title = "(c) SO₂ surface MMR at t=end [kg kg⁻¹]",
+        dest = "+proj=longlat", limits = (-180, 180, -90, 90))
+    hm12c = heatmap!(ax12c, lon, lat, so2_tf;
+        colormap = :Blues_9, colorrange = so2_clim)
+    lines!(ax12c, coastlines; color = :black, linewidth = 0.5)
+    Colorbar(fig12[1,6], hm12c; label = "SO₂ [kg kg⁻¹]", height = Relative(0.85))
+
+    save("so2_chemistry_diagnosis.png", fig12)
+    println("Saved so2_chemistry_diagnosis.png")
+
+    println("\nSO₂/H₂SO₄ figures: spinup_timeseries.png  surface_so2_map.png  surface_h2so4_map.png  so2_chemistry_diagnosis.png")
+else
+    println("\nSO₂/H₂SO₄ output not found — re-run the simulation with mmrso2/mmrh2so4 diagnostics enabled.")
+    println("Expected: $so2_ncfile")
+end
+
 println("\nAll figures saved.")
-println("Figures: co_global_mean.png  hovmoller_co_decay.png  surface_co_map.png  co_ratio_map.png  vertical_profile_co.png  surface_oh_lut.png  surface_co_emissions.png  co_chemistry_diagnosis.png")
+println("CO figures: co_global_mean.png  hovmoller_co_decay.png  surface_co_map.png  co_ratio_map.png  vertical_profile_co.png  surface_oh_lut.png  surface_co_emissions.png  co_chemistry_diagnosis.png")

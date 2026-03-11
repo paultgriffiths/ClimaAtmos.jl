@@ -110,6 +110,8 @@ function jacobian_cache(alg::ManualSparseJacobian, Y, atmos)
         @name(c.ρch4),
         @name(c.ρoh),
         @name(c.ρco),
+        @name(c.ρso2),
+        @name(c.ρh2so4),
     )
     available_chemistry_names = MatrixFields.unrolled_filter(is_in_Y, chemistry_tracer_names)
     available_tracer_names =

@@ -335,30 +335,29 @@ where `ρχ` is the density-weighted tracer mixing ratio.
 struct IdealizedChemistry <: AbstractChemistryModel end
 
 """
-    TroposphericChemistry(; oh_lut_path = "", co_emission = 1e-10) <: AbstractChemistryModel
+    TroposphericChemistry(; oh_lut_path = "", co_emission = 1e-10, ...) <: AbstractChemistryModel
 
-Simple tropospheric CO chemistry with a prescribed 3-D OH climatology.
+Simple tropospheric chemistry with prescribed 3-D OH and CEDS surface emissions.
 
-One prognostic tracer `ρco` (CO) is:
-- emitted uniformly at the surface at rate `co_emission` (kg m⁻² s⁻¹)
-- consumed by reaction with OH: CO + OH → CO₂ + H
+Prognostic tracers (all initialise at zero):
+- `ρco`    — emitted at the surface (CEDS map or uniform fallback), consumed by OH
+- `ρso2`   — emitted at the surface (CEDS map), consumed by OH: SO2 + OH → H2SO4
+- `ρh2so4` — produced from SO2 oxidation; no explicit loss in this scheme
 
-OH is prescribed from a look-up table (not prognostic). The LUT is a
-NetCDF file on a lat/lon/z grid with variable name `"OH"` in units of
-molecules cm⁻³. It is regridded onto the model grid at initialisation
-using `ClimaUtilities.TimeVaryingInputs` (monthly climatology supported).
-
-If `oh_lut_path` is empty, a uniform fallback value of 1×10⁶ molecules cm⁻³
-is used (global-mean tropospheric background).
+OH is prescribed from a 3-D look-up table (variable `"OH"`, molecules cm⁻³).
+Empty `oh_lut_path` → uniform 1×10⁶ molecules cm⁻³ fallback.
 
 # Parameters
 - `oh_lut_path::String = ""`: path to NetCDF OH climatology file.
-- `co_emission::Float64 = 1e-10`: uniform surface CO flux [kg m⁻² s⁻¹].
+- `co_emission::Float64 = 1e-10`: uniform CO surface flux [kg m⁻² s⁻¹] (fallback when co_emission_path is empty).
+- `co_emission_path::String = ""`: path to 2-D CEDS CO emission NetCDF (variable `"CO_total"`).
+- `so2_emission_path::String = ""`: path to 2-D CEDS SO2 emission NetCDF (variable `"SO2_total"`).
 """
 Base.@kwdef struct TroposphericChemistry <: AbstractChemistryModel
-    oh_lut_path::String       = ""     # path to NetCDF OH climatology (empty → uniform fallback)
-    co_emission::Float64      = 1e-10  # uniform surface flux, kg m⁻² s⁻¹ (used when co_emission_path is empty)
-    co_emission_path::String  = ""     # path to NetCDF 2-D CO emission map (empty → uniform fallback)
+    oh_lut_path::String        = ""     # path to NetCDF OH climatology (empty → uniform fallback)
+    co_emission::Float64       = 1e-10  # uniform CO surface flux, kg m⁻² s⁻¹ (fallback)
+    co_emission_path::String   = ""     # path to NetCDF 2-D CO emission map
+    so2_emission_path::String  = ""     # path to NetCDF 2-D SO2 emission map
 end
 
 ### ------------- ###

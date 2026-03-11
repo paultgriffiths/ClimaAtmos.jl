@@ -394,6 +394,9 @@ chemistry_co_emission:
 chemistry_co_emission_path:
   help: "Path to NetCDF 2-D CO emission map for TroposphericChemistry (variable 'CO_total', units kg m⁻² s⁻¹, dims lon × lat [× time]). Empty string uses the uniform chemistry_co_emission fallback."
   value: ""
+chemistry_so2_emission_path:
+  help: "Path to NetCDF 2-D SO2 emission map for TroposphericChemistry (variable 'SO2_total', units kg m⁻² s⁻¹, dims lon × lat [× time]). Empty string disables SO2 surface emission."
+  value: ""
 advection_test:
   help: "Switches off all grid-scale and subgrid-scale momentum tendencies [`false` (default), `true`]"
   value: false
