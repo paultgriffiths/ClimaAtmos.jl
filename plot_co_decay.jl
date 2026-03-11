@@ -2,7 +2,7 @@
 #=
 plot_co_decay.jl
 ================
-Produces four figures from a TroposphericChemistry / OH-LUT run:
+Produces eight figures from a TroposphericChemistry / OH-LUT run:
 
   Figure 1 — Global-mean CO vs time (log scale).
               Confirms chemistry is working: exponential decay with the
@@ -11,12 +11,23 @@ Produces four figures from a TroposphericChemistry / OH-LUT run:
   Figure 2 — Hovmöller: zonal-mean surface-layer CO fraction vs latitude × time.
               Shows faster tropical decay (high OH) vs slow polar decay (low OH).
 
-  Figure 3 — Surface CO map at t=0 and t=end (lon × lat heatmap).
-              At t=0 CO is uniform; at t=end the spatial structure of the OH LUT
-              is imprinted.  The ratio panel makes the OH influence explicit.
+  Figure 3 — Surface CO map at t=0 and t=end (lon × lat heatmap with coastlines).
 
-  Figure 4 — Vertical profile: equatorial vs polar CO fraction at t=end.
+  Figure 4 — CO(t=end)/CO(t=0) ratio map — same size and layout as Figure 6.
+              The spatial imprint of the OH LUT is directly visible.
+
+  Figure 5 — Vertical profile: equatorial vs polar CO fraction at t=end.
               Shows how OH decreases above the tropopause, slowing decay aloft.
+
+  Figure 6 — Surface OH from the GEOS-Chem LUT (January, lowest model level).
+              Matches Figure 4 exactly in size and layout for direct comparison.
+
+  Figure 7 — Surface CO emissions (CEDS anthropogenic total, January).
+              Shows where CO is being emitted at the surface.
+
+  Figure 8 — 3-panel source / sink / result:
+              CO emissions | surface OH | CO(t=end)/CO(t=0).
+              Designed for direct visual comparison of the drivers and outcome.
 
 Usage:
   julia --project plot_co_decay.jl [output_dir]
@@ -119,9 +130,11 @@ function geo_panel!(fig, pos, data_lon, data_lat, data_z; title="", colormap=:Yl
     return ax, hm
 end
 
-fig3    = Figure(size = (1000, 820))
-co_clim = (0.0, Float64(maximum(co_t0)))
+co_clim   = (0.0, Float64(maximum(co_t0)))
 ratio_sfc = co_tf ./ max.(co_t0, eps(Float32))
+
+# Figure 3: t=0 and t=end side by side
+fig3 = Figure(size = (1000, 420))
 
 ax3a, hm3a = geo_panel!(fig3, (1,1), lon, lat, co_t0;
     title      = "Surface CO [kg/kg]  t = $(round(t_days[1],   digits=1)) days",
@@ -133,18 +146,30 @@ ax3b, hm3b = geo_panel!(fig3, (1,3), lon, lat, co_tf;
     colormap   = :YlOrRd_9,
     colorrange = co_clim)
 
-ax3c, hm3c = geo_panel!(fig3, (2,1:3), lon, lat, ratio_sfc;
-    title      = "CO(t=end) / CO(t=0)  — imprint of OH spatial structure",
-    colormap   = :RdYlBu_11,
-    colorrange = (0.0, 1.0))
-
 Colorbar(fig3[1,2], hm3a; label = "CO [kg/kg]")
-Colorbar(fig3[2,4], hm3c; label = "CO / CO₀")
 
 save("surface_co_map.png", fig3)
 println("Saved surface_co_map.png")
 
-# ── Figure 4: Vertical profiles at t=end ─────────────────────────────────────
+# Figure 4 (ratio): CO(t=end)/CO(t=0) — same layout as Figure 5 (OH map)
+fig_ratio = Figure(size = (1000, 500))
+ax_ratio  = GeoAxis(fig_ratio[1,1];
+    title  = "CO(t=end) / CO(t=0)  — imprint of OH spatial structure",
+    dest   = "+proj=longlat",
+    limits = (-180, 180, -90, 90),
+)
+hm_ratio = surface!(ax_ratio, lon, lat, ratio_sfc;
+    shading    = NoShading,
+    colormap   = Reverse(:viridis),
+    colorrange = (0.0, 1.0),
+)
+lines!(ax_ratio, coastlines; color = :black, linewidth = 0.6)
+Colorbar(fig_ratio[1,2], hm_ratio; label = "CO / CO₀")
+
+save("co_ratio_map.png", fig_ratio)
+println("Saved co_ratio_map.png")
+
+# ── Figure 5: Vertical profiles at t=end ─────────────────────────────────────
 eq_mask  = abs.(lat) .< 10
 pol_mask = abs.(lat) .> 70
 z_km     = z_m ./ 1000
@@ -172,7 +197,7 @@ axislegend(ax4; position = :lb)
 save("vertical_profile_co.png", fig4)
 println("Saved vertical_profile_co.png")
 
-# ── Figure 5: Surface OH from LUT (January, z=1) — same layout as ratio panel ─
+# ── Figure 6: Surface OH from LUT (January, z=1) — same layout as ratio panel ─
 # Reads directly from the preprocessed OH LUT so the grid matches the source data
 # (lon=72, lat=46 at native GEOS-5 resolution).  The simulation starts 1985-01-01
 # so time index 1 (January) is the right slice.
@@ -209,5 +234,86 @@ Colorbar(fig5[1,2], hm5; label = "OH [molecules cm⁻³]")
 save("surface_oh_lut.png", fig5)
 println("Saved surface_oh_lut.png")
 
+# ── Figure 7: Surface CO emissions (CEDS, January) ───────────────────────────
+em_lut_path = "CO-em-anthro_CMIP_CEDS_2020_climaatmos.nc"
+if !isfile(em_lut_path)
+    em_lut_path = joinpath(dirname(outdir), "..", "CO-em-anthro_CMIP_CEDS_2020_climaatmos.nc")
+    em_lut_path = normpath(em_lut_path)
+end
+
+NCDataset(em_lut_path) do ds
+    global em_lon, em_lat, em_sfc_jan
+    em_lon     = Array(ds["lon"])               # (720,)
+    em_lat     = Array(ds["lat"])               # (360,)
+    em_sfc_jan = Array(ds["CO_total"])[:, :, 1] # (lon, lat), January
+end
+
+# Display in units of 10⁻¹⁰ kg m⁻² s⁻¹ for readability.
+# Log scale: span ~4 orders of magnitude; floor at 0.01 (= 10⁻¹² kg m⁻² s⁻¹)
+# so ocean zeros clamp to the minimum colour rather than breaking log(0).
+em_scale    = 1f10   # multiply by this to get 10⁻¹⁰ kg m⁻² s⁻¹
+em_scaled   = em_sfc_jan .* Float32(em_scale)
+em_clim     = (0.01, Float64(maximum(em_scaled)))
+
+fig7 = Figure(size = (1000, 500))
+ax7  = GeoAxis(fig7[1,1];
+    title  = "Anthropogenic CO emissions (CEDS 2020, January)  [×10⁻¹⁰ kg m⁻² s⁻¹]",
+    dest   = "+proj=longlat",
+    limits = (-180, 180, -90, 90),
+)
+hm7 = surface!(ax7, em_lon, em_lat, em_scaled;
+    shading    = NoShading,
+    colormap   = :YlOrBr_9,
+    colorscale = log10,
+    colorrange = em_clim,
+)
+lines!(ax7, coastlines; color = :black, linewidth = 0.6)
+Colorbar(fig7[1,2], hm7; label = "CO flux [×10⁻¹⁰ kg m⁻² s⁻¹]", scale = log10)
+
+save("surface_co_emissions.png", fig7)
+println("Saved surface_co_emissions.png")
+
+# ── Figure 8: 3-panel source / sink / result ─────────────────────────────────
+# Columns: CO emissions | surface OH | CO(t=end)/CO(t=0)
+# All panels share the same projection and aspect ratio for direct comparison.
+fig8 = Figure(size = (1600, 500))
+
+Label(fig8[0, 1:6], "CO chemistry: source  |  sink  |  result after $(round(t_days[end], digits=0)) days";
+    fontsize = 16, font = :bold, tellwidth = false)
+
+# Panel a — CO emissions
+ax8a = GeoAxis(fig8[1,1];
+    title  = "(a) Emissions [×10⁻¹⁰ kg m⁻² s⁻¹]",
+    dest   = "+proj=longlat", limits = (-180, 180, -90, 90),
+)
+hm8a = surface!(ax8a, em_lon, em_lat, em_scaled;
+    shading = NoShading, colormap = :YlOrBr_9, colorscale = log10, colorrange = em_clim)
+lines!(ax8a, coastlines; color = :black, linewidth = 0.5)
+Colorbar(fig8[1,2], hm8a; label = "flux [×10⁻¹⁰ kg m⁻² s⁻¹]", scale = log10, height = Relative(0.85))
+
+# Panel b — surface OH
+ax8b = GeoAxis(fig8[1,3];
+    title  = "(b) OH [molecules cm⁻³]  (GEOS-Chem, January)",
+    dest   = "+proj=longlat", limits = (-180, 180, -90, 90),
+)
+hm8b = surface!(ax8b, oh_lon, oh_lat, oh_sfc_jan;
+    shading = NoShading, colormap = :viridis,
+    colorrange = (0.0, Float64(maximum(oh_sfc_jan))))
+lines!(ax8b, coastlines; color = :white, linewidth = 0.5)
+Colorbar(fig8[1,4], hm8b; label = "OH [molec cm⁻³]", height = Relative(0.85))
+
+# Panel c — CO ratio (net result)
+ax8c = GeoAxis(fig8[1,5];
+    title  = "(c) CO(t=end) / CO(t=0)",
+    dest   = "+proj=longlat", limits = (-180, 180, -90, 90),
+)
+hm8c = surface!(ax8c, lon, lat, ratio_sfc;
+    shading = NoShading, colormap = Reverse(:viridis), colorrange = (0.0, 1.0))
+lines!(ax8c, coastlines; color = :black, linewidth = 0.5)
+Colorbar(fig8[1,6], hm8c; label = "CO / CO₀", height = Relative(0.85))
+
+save("co_chemistry_diagnosis.png", fig8)
+println("Saved co_chemistry_diagnosis.png")
+
 println("\nAll figures saved.")
-println("Figures: co_global_mean.png  hovmoller_co_decay.png  surface_co_map.png  vertical_profile_co.png  surface_oh_lut.png")
+println("Figures: co_global_mean.png  hovmoller_co_decay.png  surface_co_map.png  co_ratio_map.png  vertical_profile_co.png  surface_oh_lut.png  surface_co_emissions.png  co_chemistry_diagnosis.png")

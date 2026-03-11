@@ -389,8 +389,11 @@ chemistry_oh_lut_path:
   help: "Path to NetCDF OH climatology for TroposphericChemistry (variable 'OH', units molecules cm⁻³). Empty string uses uniform fallback of 1e6 molecules cm⁻³."
   value: ""
 chemistry_co_emission:
-  help: "Uniform surface CO emission flux for TroposphericChemistry [kg m⁻² s⁻¹]."
+  help: "Uniform surface CO emission flux for TroposphericChemistry [kg m⁻² s⁻¹]. Used only when chemistry_co_emission_path is empty."
   value: 1.0e-10
+chemistry_co_emission_path:
+  help: "Path to NetCDF 2-D CO emission map for TroposphericChemistry (variable 'CO_total', units kg m⁻² s⁻¹, dims lon × lat [× time]). Empty string uses the uniform chemistry_co_emission fallback."
+  value: ""
 advection_test:
   help: "Switches off all grid-scale and subgrid-scale momentum tendencies [`false` (default), `true`]"
   value: false

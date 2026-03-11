@@ -86,6 +86,33 @@ function oh_cache(Y, model::TroposphericChemistry, start_date)
 end
 oh_cache(_, ::AbstractChemistryModel, _) = (;)
 
+"""
+    co_emission_cache(Y, model, start_date)
+
+Allocate a prescribed 2-D surface CO emission field for `TroposphericChemistry`.
+
+If `model.co_emission_path` is non-empty the field is populated from a NetCDF
+file (variable `"CO_total"`, dims lon × lat [× time], units kg m⁻² s⁻¹) via
+`ClimaUtilities.TimeVaryingInputs`. An empty path yields a no-op — the uniform
+fallback `model.co_emission` is used directly in the tendency instead.
+"""
+function co_emission_cache(Y, model::TroposphericChemistry, start_date)
+    isempty(model.co_emission_path) && return (;)
+    co_emission_prescribed = similar(Fields.level(Y.c.ρ, 1))  # 2-D horizontal field
+    extrapolation_bc = (Intp.Periodic(), Intp.Flat())          # lon periodic, lat flat
+    prescribed_co_emission_timevaryinginput = TimeVaryingInput(
+        model.co_emission_path,
+        "CO_total",
+        axes(co_emission_prescribed);
+        reference_date = start_date,
+        regridder_type = :InterpolationsRegridder,
+        regridder_kwargs = (; extrapolation_bc),
+        method = LinearInterpolation(),
+    )
+    return (; co_emission_prescribed, prescribed_co_emission_timevaryinginput)
+end
+co_emission_cache(_, ::AbstractChemistryModel, _) = (;)
+
 function tracer_cache(Y, prescribed_aerosol_names, time_varying_trace_gases, start_date, chemistry_model = NoChemistry())
     if !isempty(prescribed_aerosol_names)
         target_space = axes(Y.c)
@@ -146,7 +173,8 @@ function tracer_cache(Y, prescribed_aerosol_names, time_varying_trace_gases, sta
         co2_cache_nt = (;)
     end
 
-    oh_cache_nt = oh_cache(Y, chemistry_model, start_date)
+    oh_cache_nt          = oh_cache(Y, chemistry_model, start_date)
+    co_emission_cache_nt = co_emission_cache(Y, chemistry_model, start_date)
 
-    return (; aerosol_cache..., o3_cache..., co2_cache_nt..., oh_cache_nt...)
+    return (; aerosol_cache..., o3_cache..., co2_cache_nt..., oh_cache_nt..., co_emission_cache_nt...)
 end

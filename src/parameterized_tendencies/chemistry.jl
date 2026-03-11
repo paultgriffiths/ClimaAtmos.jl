@@ -29,12 +29,21 @@ function update_chemistry_sources!(Yₜ, Y, p, t, model::TroposphericChemistry)
     oh = p.tracers.oh_prescribed  # molecules cm⁻³, on model grid
     @. Yₜ.c.ρco -= k_co * oh * Y.c.ρco
 
-    # Surface CO emission: flux F_CO (kg m⁻² s⁻¹) injected into bottom layer only.
-    # Fields.level is a slice, not pointwise, so it must be hoisted outside @.
+    # Surface CO emission: flux (kg m⁻² s⁻¹) → volumetric tendency (kg m⁻³ s⁻¹)
+    # by dividing by the bottom-layer Jacobian J (≈ layer thickness in metres).
     ᶜJ      = Fields.local_geometry_field(Y.c.ρco).J
     ρco_sfc = Fields.level(Yₜ.c.ρco, 1)
     J_sfc   = Fields.level(ᶜJ, 1)
-    @. ρco_sfc += F_CO / J_sfc
+    if :prescribed_co_emission_timevaryinginput in propertynames(p.tracers)
+        TimeVaryingInputs.evaluate!(
+            p.tracers.co_emission_prescribed,
+            p.tracers.prescribed_co_emission_timevaryinginput,
+            t,
+        )
+        @. ρco_sfc += p.tracers.co_emission_prescribed / J_sfc
+    else
+        @. ρco_sfc += F_CO / J_sfc
+    end
 
     return nothing
 end

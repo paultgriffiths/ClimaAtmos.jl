@@ -15,8 +15,9 @@ t_end: "10days"
 dt: "600secs"
 
 chemistry: "tropospheric"
-chemistry_oh_lut_path: "/Users/ptg21/dev-local/ClimaAtmos.jl-ptg/OH_3Dglobal.geos5.47L.4x5_climaatmos.nc"
-chemistry_co_emission: 0.0       # no surface emission — clean decay signal
+chemistry_oh_lut_path: "/Users/ptg21/dev-local/ClimaAtmos.jl/OH_3Dglobal.geos5.47L.4x5_climaatmos.nc"
+chemistry_co_emission: 0.0       # fallback uniform flux (unused when co_emission_path is set)
+chemistry_co_emission_path: "/Users/ptg21/dev-local/ClimaAtmos.jl/CO-em-anthro_CMIP_CEDS_2020_climaatmos.nc"
 
 disable_surface_flux_tendency: true
 advection_test: true             # suppress all momentum tendencies; pure chemistry
