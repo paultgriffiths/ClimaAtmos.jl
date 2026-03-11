@@ -356,8 +356,9 @@ is used (global-mean tropospheric background).
 - `co_emission::Float64 = 1e-10`: uniform surface CO flux [kg m⁻² s⁻¹].
 """
 Base.@kwdef struct TroposphericChemistry <: AbstractChemistryModel
-    oh_lut_path::String  = ""     # path to NetCDF OH climatology (empty → uniform fallback)
-    co_emission::Float64 = 1e-10  # kg m⁻² s⁻¹
+    oh_lut_path::String       = ""     # path to NetCDF OH climatology (empty → uniform fallback)
+    co_emission::Float64      = 1e-10  # uniform surface flux, kg m⁻² s⁻¹ (used when co_emission_path is empty)
+    co_emission_path::String  = ""     # path to NetCDF 2-D CO emission map (empty → uniform fallback)
 end
 
 ### ------------- ###
