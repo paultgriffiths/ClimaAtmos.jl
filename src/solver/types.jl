@@ -335,29 +335,28 @@ where `ρχ` is the density-weighted tracer mixing ratio.
 struct IdealizedChemistry <: AbstractChemistryModel end
 
 """
-    TroposphericChemistry(; oh_noon = 5e5, co_emission = 1e-10) <: AbstractChemistryModel
+    TroposphericChemistry(; oh_lut_path = "", co_emission = 1e-10) <: AbstractChemistryModel
 
-Simple tropospheric CO chemistry with a prescribed diurnal OH cycle.
+Simple tropospheric CO chemistry with a prescribed 3-D OH climatology.
 
 One prognostic tracer `ρco` (CO) is:
 - emitted uniformly at the surface at rate `co_emission` (kg m⁻² s⁻¹)
 - consumed by reaction with OH: CO + OH → CO₂ + H
 
-OH is prescribed (not prognostic):
+OH is prescribed from a look-up table (not prognostic). The LUT is a
+NetCDF file on a lat/lon/z grid with variable name `"OH"` in units of
+molecules cm⁻³. It is regridded onto the model grid at initialisation
+using `ClimaUtilities.TimeVaryingInputs` (monthly climatology supported).
 
-    [OH](t, φ) = oh_noon × max(0, cos(φ) × cos(h(t)))
-
-where φ is latitude and h(t) = 2πt/T_day − π is the solar hour angle (h=0 at noon).
+If `oh_lut_path` is empty, a uniform fallback value of 1×10⁶ molecules cm⁻³
+is used (global-mean tropospheric background).
 
 # Parameters
-- `oh_noon::Float64 = 5e5`: peak OH at noon equator [molecules cm⁻³].
-  Physical range ≈ 1e5–1e7. Increase for faster decay in demonstrations.
-  τ_noon = 1 / (k_CO × oh_noon), where k_CO = 2.4×10⁻¹³ cm³ molec⁻¹ s⁻¹.
-  Default (5e5): τ ≈ 97 days.  Demo (5e7): τ ≈ 23 hours.
+- `oh_lut_path::String = ""`: path to NetCDF OH climatology file.
 - `co_emission::Float64 = 1e-10`: uniform surface CO flux [kg m⁻² s⁻¹].
 """
 Base.@kwdef struct TroposphericChemistry <: AbstractChemistryModel
-    oh_noon::Float64     = 5e5    # molecules cm⁻³
+    oh_lut_path::String  = ""     # path to NetCDF OH climatology (empty → uniform fallback)
     co_emission::Float64 = 1e-10  # kg m⁻² s⁻¹
 end
 

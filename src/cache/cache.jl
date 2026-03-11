@@ -198,7 +198,7 @@ function build_cache(
     non_orographic_gravity_wave = non_orographic_gravity_wave_cache(Y, atmos)
     orographic_gravity_wave = orographic_gravity_wave_cache(Y, atmos)
     radiation = radiation_model_cache(Y, atmos, radiation_args...)
-    tracers = tracer_cache(Y, aerosol_names, time_varying_trace_gas_names, start_date)
+    tracers = tracer_cache(Y, aerosol_names, time_varying_trace_gas_names, start_date, atmos.chemistry.chemistry_model)
 
     args = (
         dt,

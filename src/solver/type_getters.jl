@@ -191,7 +191,7 @@ function get_atmos(config::AtmosConfig, params)
                 IdealizedChemistry()
             elseif chem == "tropospheric"
                 TroposphericChemistry(;
-                    oh_noon     = parsed_args["chemistry_oh_noon"],
+                    oh_lut_path = parsed_args["chemistry_oh_lut_path"],
                     co_emission = parsed_args["chemistry_co_emission"],
                 )
             else
