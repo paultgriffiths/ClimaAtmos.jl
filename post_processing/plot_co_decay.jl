@@ -268,9 +268,9 @@ println("Saved surface_co_emissions.png")
 # ── Figure 8: 3-panel source / sink / result ─────────────────────────────────
 # Columns: CO emissions | surface OH | CO(t=end)/CO(t=0)
 # All panels share the same projection and aspect ratio for direct comparison.
-fig8 = Figure(size = (1600, 500))
+fig8 = Figure(size = (900, 1100))
 
-Label(fig8[0, 1:6], "CO chemistry: source  |  sink  |  result after $(round(t_days[end], digits=0)) days";
+Label(fig8[0, 1:2], "CO chemistry diagnosis after $(round(t_days[end], digits=0)) days";
     fontsize = 16, font = :bold, tellwidth = false)
 
 # Panel a — CO emissions
@@ -284,7 +284,7 @@ lines!(ax8a, coastlines; color = :black, linewidth = 0.5)
 Colorbar(fig8[1,2], hm8a; label = "flux [×10⁻¹⁰ kg m⁻² s⁻¹]", scale = log10, height = Relative(0.85))
 
 # Panel b — surface OH
-ax8b = GeoAxis(fig8[1,3];
+ax8b = GeoAxis(fig8[2,1];
     title  = "(b) OH [molecules cm⁻³]  (GEOS-Chem, January)",
     dest   = "+proj=longlat", limits = (-180, 180, -90, 90),
 )
@@ -292,17 +292,17 @@ hm8b = heatmap!(ax8b, oh_lon, oh_lat, oh_sfc_jan;
     colormap = :viridis,
     colorrange = (0.0, Float64(maximum(oh_sfc_jan))))
 lines!(ax8b, coastlines; color = :white, linewidth = 0.5)
-Colorbar(fig8[1,4], hm8b; label = "OH [molec cm⁻³]", height = Relative(0.85))
+Colorbar(fig8[2,2], hm8b; label = "OH [molec cm⁻³]", height = Relative(0.85))
 
 # Panel c — surface CO at t=end (net result of emissions + OH removal)
-ax8c = GeoAxis(fig8[1,5];
+ax8c = GeoAxis(fig8[3,1];
     title  = "(c) Surface CO at t=$(round(t_days[end], digits=0)) days [kg/kg]",
     dest   = "+proj=longlat", limits = (-180, 180, -90, 90),
 )
 hm8c = heatmap!(ax8c, lon, lat, co_tf;
     colormap = :YlOrRd_9, colorrange = co_clim)
 lines!(ax8c, coastlines; color = :black, linewidth = 0.5)
-Colorbar(fig8[1,6], hm8c; label = "CO [kg/kg]", height = Relative(0.85))
+Colorbar(fig8[3,2], hm8c; label = "CO [kg/kg]", height = Relative(0.85))
 
 save("co_chemistry_diagnosis.png", fig8)
 println("Saved co_chemistry_diagnosis.png")
@@ -396,8 +396,8 @@ if isfile(so2_ncfile) && isfile(h2so4_ncfile)
         nothing
     end
 
-    fig12 = Figure(size = (1600, 500))
-    Label(fig12[0, 1:6], "SO₂ chemistry: source  |  sink  |  result after $(round(t_days[end], digits=0)) days";
+    fig12 = Figure(size = (900, 1100))
+    Label(fig12[0, 1:2], "SO₂ chemistry diagnosis after $(round(t_days[end], digits=0)) days";
         fontsize = 16, font = :bold, tellwidth = false)
 
     if !isnothing(so2_em_scaled)
@@ -413,22 +413,22 @@ if isfile(so2_ncfile) && isfile(h2so4_ncfile)
             scale = log10, height = Relative(0.85))
     end
 
-    ax12b = GeoAxis(fig12[1,3];
+    ax12b = GeoAxis(fig12[2,1];
         title = "(b) OH [molecules cm⁻³]  (GEOS-Chem, January)",
         dest = "+proj=longlat", limits = (-180, 180, -90, 90))
     hm12b = heatmap!(ax12b, oh_lon, oh_lat, oh_sfc_jan;
         colormap = :viridis,
         colorrange = (0.0, Float64(maximum(oh_sfc_jan))))
     lines!(ax12b, coastlines; color = :white, linewidth = 0.5)
-    Colorbar(fig12[1,4], hm12b; label = "OH [molec cm⁻³]", height = Relative(0.85))
+    Colorbar(fig12[2,2], hm12b; label = "OH [molec cm⁻³]", height = Relative(0.85))
 
-    ax12c = GeoAxis(fig12[1,5];
+    ax12c = GeoAxis(fig12[3,1];
         title = "(c) SO₂ surface MMR at t=end [kg kg⁻¹]",
         dest = "+proj=longlat", limits = (-180, 180, -90, 90))
     hm12c = heatmap!(ax12c, lon, lat, so2_tf;
         colormap = :Blues_9, colorrange = so2_clim)
     lines!(ax12c, coastlines; color = :black, linewidth = 0.5)
-    Colorbar(fig12[1,6], hm12c; label = "SO₂ [kg kg⁻¹]", height = Relative(0.85))
+    Colorbar(fig12[3,2], hm12c; label = "SO₂ [kg kg⁻¹]", height = Relative(0.85))
 
     save("so2_chemistry_diagnosis.png", fig12)
     println("Saved so2_chemistry_diagnosis.png")
